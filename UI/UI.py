@@ -3,110 +3,148 @@ import subprocess
 import sys
 import threading
 import queue
+import socket
+import time
+import os
 
 # --- CONFIGURATION ---
 WIDTH, HEIGHT = 600, 600
-DIMENSION = 8  # 8x8 cases
+DIMENSION = 8
 SQ_SIZE = HEIGHT // DIMENSION
 FPS = 15
 
-# Chemins
-# Note: On n'utilise plus ENGINE_PATH pour l'exécution directe ici, 
-# car on force l'utilisation de WSL.
-ENGINE_PATH = r"C:/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/engine.exe"
-LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/engine"
+# Réseau
+HOST = "127.0.0.1"
+PORT = 12345
+
+# --- CHEMINS (CORRECTION ROBUSTE) ---
+# BASE_DIR est le dossier où se trouve ce fichier UI.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# On suppose que le dossier 'assets' est à côté de UI.py
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+
+# Le chemin vers l'exécutable Linux (vu depuis WSL)
+# ATTENTION : Il faut pointer vers le FICHIER exécutable, pas le dossier.
+# Si tu as compilé avec "gcc -o engine", le fichier s'appelle "engine".
+LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/API"
 
 # Couleurs
-COLOR_LIGHT = (234, 235, 200) # Beige
-COLOR_DARK = (119, 149, 86)   # Vert
-COLOR_HIGHLIGHT = (255, 255, 0, 100) # Jaune transparent
+COLOR_LIGHT = (234, 235, 200) 
+COLOR_DARK = (119, 149, 86)   
+COLOR_HIGHLIGHT = (255, 255, 0, 100) 
 
-# Mapping des pièces pour l'affichage (Texte de secours)
 PIECE_SYMBOLS = {
     'wP': 'P', 'wN': 'N', 'wB': 'B', 'wR': 'R', 'wQ': 'Q', 'wK': 'K',
     'bP': 'p', 'bN': 'n', 'bB': 'b', 'bR': 'r', 'bQ': 'q', 'bK': 'k'
 }
 
-class ChessEngineProcess:
-    """Gère la communication avec le programme C via WSL"""
+# Ajout de constantes pour la connexion
+MAX_RETRIES = 10
+RETRY_DELAY = 1 
+
+class ChessAPIClient:
     def __init__(self):
-        
-        # --- MODIFICATION CRUCIALE POUR WSL ---
-        # On construit la commande sous forme de liste : ["wsl", "chemin_linux"]
-        # Cela dit à Windows : "Lance WSL, et demande-lui d'exécuter ce fichier"
-        self.command = ["wsl", LINUX_ENGINE_PATH]
-        
+        self.sock = None
+        self.process = None
+        self.q = queue.Queue()
+        self.running = True
+
+        print("[Python] Lancement du serveur C via WSL...")
+        self.launch_server()
+        # On attend un peu, mais le connect_to_server gère les retries maintenant
+        time.sleep(0.5) 
+        self.connect_to_server()
+
+    def launch_server(self):
+        cmd = ["wsl", LINUX_ENGINE_PATH]
         try:
-            # Lance le moteur C via WSL
             self.process = subprocess.Popen(
-                self.command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0, 
+                cmd,
+                creationflags=subprocess.CREATE_NEW_CONSOLE 
             )
-            self.q = queue.Queue()
-            
-            # Thread pour lire la sortie du C sans bloquer l'interface
-            self.listener = threading.Thread(target=self.read_output)
-            self.listener.daemon = True
-            self.listener.start()
-            
-            print(f"[Python] Commande lancée : {' '.join(self.command)}")
-            
         except FileNotFoundError:
-            print(f"[Python] ERREUR : Impossible de lancer WSL ou le fichier n'existe pas.")
-            print(f"Commande tentée : {self.command}")
-            self.process = None
+            print(f"[Erreur] Impossible de lancer : {cmd}")
 
-    def read_output(self):
-        """Lit ce que le moteur C 'print' dans le terminal"""
-        # Si le processus n'a pas démarré, on arrête tout de suite
-        if not self.process:
-            return
-
-        while True:
+    def connect_to_server(self):
+        """Tente de se connecter au port TCP avec des réessais."""
+        print(f"[Python] Tentative de connexion à {HOST}:{PORT}...")
+        for attempt in range(MAX_RETRIES):
             try:
-                line = self.process.stdout.readline()
-                if line:
-                    self.q.put(line.strip())
-                else:
-                    # Si line est vide, le processus est peut-être mort
-                    break
-            except Exception as e:
-                print(f"Erreur lecture : {e}")
-                break
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((HOST, PORT))
+                print(f"[Python] Connecté au moteur après {attempt + 1} essai(s).")
+                
+                self.listener = threading.Thread(target=self.receive_data)
+                self.listener.daemon = True
+                self.listener.start()
+                return 
+
+            except ConnectionRefusedError:
+                print(f"[Python] Essai {attempt + 1}/{MAX_RETRIES} échoué. Le serveur démarre...")
+                if self.sock: self.sock.close()
+                time.sleep(RETRY_DELAY)
+
+        print("[Erreur Critique] Impossible de se connecter au moteur C.")
+        sys.exit(1)
+
+    def receive_data(self):
+        while self.running and self.sock:
+            try:
+                data = self.sock.recv(4096) # Augmenté un peu pour être sûr d'avoir tout le board
+                if not data: break
+                
+                # Le serveur peut envoyer plusieurs messages collés
+                # On décode tout
+                full_msg = data.decode('utf-8').strip()
+                
+                # On peut recevoir "board:XXX\nillegal..."
+                # On split par ligne pour traiter chaque message
+                lines = full_msg.split('\n') # Ou split par le caractère nul si tu l'utilises
+                
+                for line in lines:
+                    line = line.strip()
+                    if line: self.q.put(line)
+                    
+            except: break
 
     def send_command(self, cmd):
-        """Envoie une commande (ex: 'e2e4') au moteur C"""
-        if self.process:
-            print(f"[Python -> C] : {cmd}") 
+        if self.sock:
             try:
-                data = (cmd + "\n").encode('utf-8')
-                self.process.stdin.write(data)
-                self.process.stdin.flush()
-            except BrokenPipeError:
-                print("[Python] Erreur : Le moteur C s'est arrêté.")
+                print(f"[Python -> API] : {cmd}")
+                self.sock.sendall(cmd.encode('utf-8'))
+            except: pass
 
     def get_messages(self):
-        """Récupère les messages en attente"""
         msgs = []
-        while not self.q.empty():
-            msgs.append(self.q.get())
+        while not self.q.empty(): msgs.append(self.q.get())
         return msgs
+
+    def close(self):
+        self.running = False
+        if self.sock: self.sock.close()
+        if self.process: self.process.terminate()
 
 class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Interface Moteur Bitboard (via WSL)")
+        pygame.display.set_caption("Chess Client (Source de Vérité: C)")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Arial", 32, bold=True)
         
         self.images = {}
         self.load_images()
         
-        # État du jeu (Représentation interne simplifiée pour Python)
+        # Le plateau est initialisé vide, on attendra que le C nous donne l'état
+        # Ou on l'init standard pour le premier affichage
+        self.board = [["--" for _ in range(8)] for _ in range(8)]
+        self.init_standard_board()
+        
+        self.selected_sq = () 
+        self.player_clicks = [] 
+        self.client = ChessAPIClient()
+
+    def init_standard_board(self):
         self.board = [
             ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
             ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
@@ -117,22 +155,41 @@ class Game:
             ["wP", "wP", "wP", "wP", "wP", "wP", "wP", "wP"],
             ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"]
         ]
-        
-        self.selected_sq = () # (row, col)
-        self.player_clicks = [] # [(row, col), (row, col)]
-        
-        # Connexion au moteur (Pas besoin d'argument path car hardcodé pour WSL)
-        self.engine = ChessEngineProcess()
 
     def load_images(self):
         pieces = ['wP', 'wR', 'wN', 'wB', 'wK', 'wQ', 'bP', 'bR', 'bN', 'bB', 'bK', 'bQ']
+        print(f"[Info] Recherche des images dans : {ASSETS_DIR}")
+        
         for piece in pieces:
+            # CORRECTION : On utilise ASSETS_DIR calculé proprement
+            path = os.path.join(ASSETS_DIR, f"{piece}.png")
             try:
-                # Essaie de charger l'image
-                self.images[piece] = pygame.image.load(f"assets/{piece}.png")
+                self.images[piece] = pygame.image.load(path)
                 self.images[piece] = pygame.transform.scale(self.images[piece], (SQ_SIZE, SQ_SIZE))
-            except:
-                pass
+            except Exception as e:
+                if piece == 'wP': # Log juste une fois pour pas spammer
+                    print(f"[Attention] Image non trouvée : {path}")
+
+    # --- LA FONCTION QUI MANQUAIT EST ICI ---
+    def set_board_from_string(self, board_str):
+        """Met à jour tout le plateau à partir de la chaîne de 64 chars reçue du C"""
+        # Mapping des chars C vers les codes pièces Python
+        char_to_piece = {
+            'P': 'wP', 'N': 'wN', 'B': 'wB', 'R': 'wR', 'Q': 'wQ', 'K': 'wK',
+            'p': 'bP', 'n': 'bN', 'b': 'bB', 'r': 'bR', 'q': 'bQ', 'k': 'bK',
+            '-': '--'
+        }
+        
+        # On s'assure de ne pas dépasser 64 chars
+        limit = min(len(board_str), 64)
+        
+        for i in range(limit):
+            char = board_str[i]
+            row = i // 8
+            col = i % 8
+            if char in char_to_piece:
+                self.board[row][col] = char_to_piece[char]
+    # -----------------------------------------
 
     def draw_board(self):
         colors = [COLOR_LIGHT, COLOR_DARK]
@@ -140,8 +197,6 @@ class Game:
             for c in range(DIMENSION):
                 color = colors[((r + c) % 2)]
                 pygame.draw.rect(self.screen, color, pygame.Rect(c*SQ_SIZE, r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
-                
-                # Surlignage de la sélection
                 if self.selected_sq == (r, c):
                     s = pygame.Surface((SQ_SIZE, SQ_SIZE))
                     s.set_alpha(100)
@@ -156,43 +211,58 @@ class Game:
                     if piece in self.images:
                         self.screen.blit(self.images[piece], pygame.Rect(c*SQ_SIZE, r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
                     else:
-                        # Fallback texte si pas d'image
                         color = (0, 0, 0) if piece[0] == 'w' else (50, 50, 50)
-                        text = self.font.render(PIECE_SYMBOLS[piece], True, color)
+                        text = self.font.render(PIECE_SYMBOLS.get(piece, "?"), True, color)
                         text_rect = text.get_rect(center=(c*SQ_SIZE + SQ_SIZE//2, r*SQ_SIZE + SQ_SIZE//2))
                         self.screen.blit(text, text_rect)
 
     def col_row_to_algebraic(self, col, row):
-        """Convertit (col 0, row 7) -> 'a1'"""
         files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
         rank = 8 - row 
         return f"{files[col]}{rank}"
 
-    def update_board_from_move(self, start, end):
-        """Met à jour le plateau Python VISUELLEMENT"""
-        startRow, startCol = start
-        endRow, endCol = end
-        
-        piece = self.board[startRow][startCol]
-        self.board[endRow][endCol] = piece
-        self.board[startRow][startCol] = "--"
-
     def run(self):
         running = True
+        game_over = False
+        
         while running:
-            # 1. Lire les messages du moteur C
-            if self.engine:
-                messages = self.engine.get_messages()
-                for msg in messages:
-                    print(f"[C > Python] : {msg}")
-                    # TODO: Ajouter ici la logique si le coup est Illégal pour annuler le mouvement visuel
+            # 1. Réponses API
+            messages = self.client.get_messages()
+            for msg in messages:
+                print(f"[API > Python] : {msg}")
+                
+                # On découpe le message par espace pour voir s'il y a plusieurs infos
+                # Ex: "board:rnbq... game_over:checkmate"
+                parts = msg.split(' ')
+                
+                for part in parts:
+                    if part.startswith("board:"):
+                        raw_board = part.split(":")[1]
+                        if len(raw_board) == 64:
+                            self.set_board_from_string(raw_board)
+                            print("-> Plateau mis à jour.")
+                    
+                    elif part == "game_over:checkmate":
+                        print("!!! ECHEC ET MAT !!!")
+                        pygame.display.set_caption("ECHEC ET MAT - Partie Terminée")
+                        game_over = True
+                        
+                    elif part == "game_over:stalemate":
+                        print("!!! PAT (Match Nul) !!!")
+                        pygame.display.set_caption("PAT - Partie Terminée")
+                        game_over = True
+                        
+                    elif part == "illegal_move_king_check":
+                        print("-> Coup illégal (Roi en échec)")
 
-            # 2. Gestion Evénements
+            # 2. Evénements
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    self.client.send_command("quit")
                     running = False
                 
-                elif event.type == pygame.MOUSEBUTTONDOWN:
+                # On interdit de jouer si c'est Game Over
+                elif event.type == pygame.MOUSEBUTTONDOWN and not game_over:
                     location = pygame.mouse.get_pos()
                     col = location[0] // SQ_SIZE
                     row = location[1] // SQ_SIZE
@@ -211,20 +281,24 @@ class Game:
                         move_str = self.col_row_to_algebraic(start[1], start[0]) + \
                                    self.col_row_to_algebraic(end[1], end[0])
                         
-                        if self.engine:
-                            self.engine.send_command(move_str)
-                        
-                        self.update_board_from_move(start, end)
-                        
+                        self.client.send_command(move_str)
                         self.selected_sq = ()
                         self.player_clicks = []
 
-            # 3. Dessin
             self.draw_board()
             self.draw_pieces()
+            
+            # Petit effet visuel si Game Over
+            if game_over:
+                s = pygame.Surface((WIDTH, HEIGHT))
+                s.set_alpha(100) # Transparence
+                s.fill((255, 0, 0)) # Rouge
+                self.screen.blit(s, (0,0))
+                
             pygame.display.flip()
             self.clock.tick(FPS)
 
+        self.client.close()
         pygame.quit()
 
 if __name__ == "__main__":
