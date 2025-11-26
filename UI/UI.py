@@ -40,7 +40,7 @@ PIECE_SYMBOLS = {
 
 # Ajout de constantes pour la connexion
 MAX_RETRIES = 10
-RETRY_DELAY = 1 
+RETRY_DELAY = 0.5  # secondes
 
 class ChessAPIClient:
     def __init__(self):
@@ -52,7 +52,7 @@ class ChessAPIClient:
         print("[Python] Lancement du serveur C via WSL...")
         self.launch_server()
         # On attend un peu, mais le connect_to_server gère les retries maintenant
-        time.sleep(0.5) 
+        time.sleep(4) 
         self.connect_to_server()
 
     def launch_server(self):
@@ -216,6 +216,61 @@ class Game:
                         text_rect = text.get_rect(center=(c*SQ_SIZE + SQ_SIZE//2, r*SQ_SIZE + SQ_SIZE//2))
                         self.screen.blit(text, text_rect)
 
+    def get_promotion_choice(self, color):
+        """Affiche un menu pour choisir la promotion et retourne 'q', 'r', 'b', ou 'n'"""
+        # On dessine un rectangle au centre
+        w, h = 300, 100
+        rect_x = (WIDTH - w) // 2
+        rect_y = (HEIGHT - h) // 2
+        
+        # Couleurs des boutons
+        pygame.draw.rect(self.screen, (50, 50, 50), (rect_x, rect_y, w, h))
+        pygame.draw.rect(self.screen, (200, 200, 200), (rect_x, rect_y, w, h), 3)
+        
+        options = ['q', 'r', 'b', 'n'] # Ordre des boutons
+        # Mapping pour afficher les images correspondantes
+        piece_codes = {
+            'q': 'wQ' if color == 'w' else 'bQ',
+            'r': 'wR' if color == 'w' else 'bR',
+            'b': 'wB' if color == 'w' else 'bB',
+            'n': 'wN' if color == 'w' else 'bN'
+        }
+        
+        btn_width = w // 4
+        
+        # --- Boucle d'attente locale (bloque le jeu jusqu'au choix) ---
+        waiting = True
+        choice = 'q' # Par défaut
+        
+        while waiting:
+            for i, opt in enumerate(options):
+                # Dessin des zones
+                bx = rect_x + i * btn_width
+                pygame.draw.rect(self.screen, (100, 100, 100), (bx, rect_y, btn_width, h), 1)
+                
+                # Dessin de la pièce
+                p_code = piece_codes[opt]
+                if p_code in self.images:
+                    img = self.images[p_code]
+                    # On centre l'image dans le bouton
+                    img_rect = img.get_rect(center=(bx + btn_width//2, rect_y + h//2))
+                    self.screen.blit(img, img_rect)
+            
+            pygame.display.flip()
+            
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = pygame.mouse.get_pos()
+                    # Est-ce qu'on a cliqué dans le menu ?
+                    if rect_y <= my <= rect_y + h and rect_x <= mx <= rect_x + w:
+                        # Quel bouton ?
+                        idx = (mx - rect_x) // btn_width
+                        if 0 <= idx < 4:
+                            choice = options[idx]
+                            waiting = False
+                            
+        return choice
+
     def col_row_to_algebraic(self, col, row):
         files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
         rank = 8 - row 
@@ -278,10 +333,26 @@ class Game:
                         start = self.player_clicks[0]
                         end = self.player_clicks[1]
                         
+                        # 1. Conversion coordonnées
                         move_str = self.col_row_to_algebraic(start[1], start[0]) + \
                                    self.col_row_to_algebraic(end[1], end[0])
                         
+                        # 2. DÉTECTION PROMOTION
+                        # On regarde quelle pièce bouge
+                        piece_moving = self.board[start[0]][start[1]]
+                        
+                        # Si c'est un Pion et qu'il va sur la ligne 0 (Blanc) ou 7 (Noir)
+                        if piece_moving[1] == 'P':
+                            if (piece_moving[0] == 'w' and end[0] == 0) or \
+                               (piece_moving[0] == 'b' and end[0] == 7):
+                                
+                                # Appel du menu graphique (Bloquant)
+                                promo_char = self.get_promotion_choice(piece_moving[0])
+                                move_str += promo_char # ex: "a7a8" + "n"
+                        
+                        # 3. Envoi au moteur
                         self.client.send_command(move_str)
+                        
                         self.selected_sq = ()
                         self.player_clicks = []
 

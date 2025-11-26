@@ -69,28 +69,39 @@ void init_castling_masks() {
 
 void init_leapers_attacks() {
     for (int sq = 0; sq < 64; sq++) {
+        // --- CAVALIER ---
         Bitboard knight_bit = (1ULL << sq);
         Bitboard k_moves = 0;
-        k_moves |= (knight_bit & ~MASK_GH_FILE) << 17;
-        k_moves |= (knight_bit & ~MASK_AB_FILE) >> 17;
-        k_moves |= (knight_bit & ~MASK_AB_FILE) << 15;
-        k_moves |= (knight_bit & ~MASK_GH_FILE) >> 15;
-        k_moves |= (knight_bit & ~MASK_H_FILE) << 10;
-        k_moves |= (knight_bit & ~MASK_A_FILE) >> 10;
-        k_moves |= (knight_bit & ~MASK_A_FILE) << 6;
-        k_moves |= (knight_bit & ~MASK_H_FILE) >> 6;
+        
+        // On n'applique le décalage QUE si la destination théorique est sur le plateau
+        // Et on applique les masques de colonnes pour éviter le wrap-around
+        
+        if ((sq + 17) < 64) k_moves |= (knight_bit & ~MASK_H_FILE) << 17;
+        if ((sq + 15) < 64) k_moves |= (knight_bit & ~MASK_A_FILE) << 15;
+        if ((sq + 10) < 64) k_moves |= (knight_bit & ~MASK_GH_FILE) << 10;
+        if ((sq + 6)  < 64) k_moves |= (knight_bit & ~MASK_AB_FILE) << 6;
+        
+        if ((sq - 17) >= 0) k_moves |= (knight_bit & ~MASK_A_FILE) >> 17;
+        if ((sq - 15) >= 0) k_moves |= (knight_bit & ~MASK_H_FILE) >> 15;
+        if ((sq - 10) >= 0) k_moves |= (knight_bit & ~MASK_AB_FILE) >> 10;
+        if ((sq - 6)  >= 0) k_moves |= (knight_bit & ~MASK_GH_FILE) >> 6;
+        
         knight_attacks[sq] = k_moves;
 
+        // --- ROI ---
         Bitboard king_bit = (1ULL << sq);
         Bitboard r_moves = 0;
-        r_moves |= (king_bit & ~MASK_H_FILE) << 1;
-        r_moves |= (king_bit & ~MASK_A_FILE) >> 1;
-        r_moves |= (king_bit << 8);
-        r_moves |= (king_bit >> 8);
-        r_moves |= (king_bit & ~MASK_H_FILE) << 9;
-        r_moves |= (king_bit & ~MASK_A_FILE) << 7;
-        r_moves |= (king_bit & ~MASK_H_FILE) >> 7;
-        r_moves |= (king_bit & ~MASK_A_FILE) >> 9;
+        
+        if ((sq + 8) < 64) r_moves |= (king_bit << 8);
+        if ((sq - 8) >= 0) r_moves |= (king_bit >> 8);
+        if ((sq + 1) < 64) r_moves |= (king_bit & ~MASK_H_FILE) << 1; // Droite
+        if ((sq - 1) >= 0) r_moves |= (king_bit & ~MASK_A_FILE) >> 1; // Gauche
+        
+        if ((sq + 9) < 64) r_moves |= (king_bit & ~MASK_H_FILE) << 9;
+        if ((sq + 7) < 64) r_moves |= (king_bit & ~MASK_A_FILE) << 7;
+        if ((sq - 7) >= 0) r_moves |= (king_bit & ~MASK_H_FILE) >> 7;
+        if ((sq - 9) >= 0) r_moves |= (king_bit & ~MASK_A_FILE) >> 9;
+        
         king_attacks[sq] = r_moves;
     }
 }
@@ -404,10 +415,22 @@ int check_game_over() {
     }
 }
 
-int parse_input_squares(char *str, int *from, int *to) {
-    if (str[0] < 'a' || str[0] > 'h') return 0; if (str[1] < '1' || str[1] > '8') return 0;
-    if (str[2] < 'a' || str[2] > 'h') return 0; if (str[3] < '1' || str[3] > '8') return 0;
-    *from = (str[0] - 'a') + ((str[1] - '1') * 8); *to   = (str[2] - 'a') + ((str[3] - '1') * 8);
+// Modifié pour extraire la promotion (q, r, b, n) ou 0 si absent
+int parse_input_squares(char *str, int *from, int *to, char *prom_char) {
+    if (str[0] < 'a' || str[0] > 'h') return 0;
+    if (str[1] < '1' || str[1] > '8') return 0;
+    if (str[2] < 'a' || str[2] > 'h') return 0;
+    if (str[3] < '1' || str[3] > '8') return 0;
+
+    *from = (str[0] - 'a') + ((str[1] - '1') * 8);
+    *to   = (str[2] - 'a') + ((str[3] - '1') * 8);
+    
+    // Vérifie s'il y a un 5ème caractère pour la promotion
+    if (strlen(str) > 4) {
+        *prom_char = str[4]; // ex: 'q', 'n'...
+    } else {
+        *prom_char = 0; // Pas de promotion spécifiée
+    }
     return 1;
 }
 
@@ -478,13 +501,59 @@ int main() {
         if (strcmp(buffer, "quit") == 0) break;
         
         int from, to;
-        if (parse_input_squares(buffer, &from, &to)) {
-            MOVE move_list[256]; int move_count = 0;
+        char prom_char; // Variable pour stocker 'q', 'r', etc.
+
+        if (parse_input_squares(buffer, &from, &to, &prom_char)) {
+            
+            MOVE move_list[256];
+            int move_count = 0;
             generate_moves(move_list, &move_count);
-            int move_found = 0; MOVE chosen_move = 0;
+
+            int move_found = 0;
+            MOVE chosen_move = 0;
+
             for (int i = 0; i < move_count; i++) {
                 MOVE m = move_list[i];
-                if (GET_MOVE_FROM(m) == from && GET_MOVE_TO(m) == to) { chosen_move = m; move_found = 1; break; }
+                
+                // 1. Vérifie les cases départ/arrivée
+                if (GET_MOVE_FROM(m) == from && GET_MOVE_TO(m) == to) {
+                    
+                    // 2. Vérifie la promotion
+                    int promoted = GET_MOVE_PROMOTED(m);
+                    
+                    if (promoted) {
+                        // Si le joueur a envoyé une promotion (ex: "e7e8n")
+                        if (prom_char != 0) {
+                            // On vérifie si la pièce promue correspond à la lettre
+                            // Note: promoted est un entier (wQ, bQ...), prom_char est 'q'
+                            // On fait un mapping simple
+                            int is_match = 0;
+                            if ((promoted == wQ || promoted == bQ) && prom_char == 'q') is_match = 1;
+                            else if ((promoted == wR || promoted == bR) && prom_char == 'r') is_match = 1;
+                            else if ((promoted == wB || promoted == bB) && prom_char == 'b') is_match = 1;
+                            else if ((promoted == wN || promoted == bN) && prom_char == 'n') is_match = 1;
+                            
+                            if (is_match) {
+                                chosen_move = m;
+                                move_found = 1;
+                                break;
+                            }
+                        } else {
+                            // Si le joueur n'a rien précisé mais que c'est une promotion,
+                            // par défaut on prend la Dame (Queen)
+                            if (promoted == wQ || promoted == bQ) {
+                                chosen_move = m;
+                                move_found = 1;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Coup normal (pas de promotion)
+                        chosen_move = m;
+                        move_found = 1;
+                        break;
+                    }
+                }
             }
             // D. Exécution et Réponse
             char response[200]; // Un peu plus grand pour contenir le plateau
