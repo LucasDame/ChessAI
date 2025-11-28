@@ -3,132 +3,147 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import os
+import glob
+import random
+import gc # Garbage Collector pour forcer le nettoyage de la RAM
 import matplotlib.pyplot as plt
 from model import ChessNet
 
 # --- CONFIGURATION ---
-TRAIN_FILE = "../data/train_data.pt"
-VAL_FILE = "../data/val_data.pt"
+DATA_DIR = "../data/processed"
 MODEL_SAVE_PATH = "../models/chess_model.pth"
 GRAPH_SAVE_PATH = "../models/training_loss.png"
 
 BATCH_SIZE = 512
-EPOCHS = 50        # On met beaucoup d'époques, l'Early Stopping arrêtera avant !
+EPOCHS = 20 
 LEARNING_RATE = 0.001
-PATIENCE = 3       # Arrêter si pas d'amélioration pendant 5 époques
-
-def load_dataset(filepath):
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"{filepath} introuvable.")
-    data = torch.load(filepath)
-    return TensorDataset(data['inputs'], data['labels'])
+PATIENCE = 3 # On réduit un peu la patience car 1 époque est très longue maintenant
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Entraînement sur : {device}")
 
-    # 1. Chargement
-    print("Chargement Train & Val...")
-    try:
-        train_dataset = load_dataset(TRAIN_FILE)
-        val_dataset = load_dataset(VAL_FILE)
-    except FileNotFoundError:
-        print("Erreur: Lancez d'abord preprocess.py !")
+    # 1. Repérage des fichiers
+    train_files = glob.glob(os.path.join(DATA_DIR, "train_part_*.pt"))
+    val_files = glob.glob(os.path.join(DATA_DIR, "val_part_*.pt"))
+    
+    if not train_files:
+        print("Erreur : Aucun fichier de données trouvé.")
         return
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    print(f"Dataset : {len(train_files)} fichiers d'entraînement détectés.")
 
+    # 2. Initialisation
     model = ChessNet().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # Historique
     history = {'train_loss': [], 'val_loss': []}
-    
-    # Variables pour Early Stopping
     best_val_loss = float('inf')
     patience_counter = 0
 
-    print(f"Début de l'entraînement (Max Epochs: {EPOCHS}, Patience: {PATIENCE})...")
-    
+    print("Début du Streaming...")
+
     for epoch in range(EPOCHS):
-        # --- TRAIN ---
+        print(f"\n=== EPOCH {epoch+1}/{EPOCHS} ===")
+        
+        # --- PHASE TRAIN (Fichier par Fichier) ---
         model.train()
-        running_loss = 0.0
-        for x, y in train_loader:
-            x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
-            outputs = model(x)
-            loss = criterion(outputs, y)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
+        total_train_loss = 0.0
+        total_batches = 0
         
-        avg_train_loss = running_loss / len(train_loader)
-        
-        # --- VALIDATION ---
-        model.eval()
-        val_running_loss = 0.0
-        correct_preds = 0
-        total_preds = 0
-        
-        with torch.no_grad():
-            for x, y in val_loader:
+        # On mélange l'ordre des fichiers à chaque époque pour varier
+        random.shuffle(train_files)
+
+        for i, f_path in enumerate(train_files):
+            print(f"   [Train] Chargement fichier {i+1}/{len(train_files)} : {os.path.basename(f_path)}")
+            
+            # Chargement local (RAM monte)
+            data = torch.load(f_path)
+            dataset = TensorDataset(data['inputs'], data['labels'])
+            loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+            
+            # Entraînement sur ce morceau
+            file_loss = 0.0
+            for x, y in loader:
                 x, y = x.to(device), y.to(device)
+                optimizer.zero_grad()
                 outputs = model(x)
                 loss = criterion(outputs, y)
-                val_running_loss += loss.item()
+                loss.backward()
+                optimizer.step()
+                file_loss += loss.item()
+            
+            total_train_loss += file_loss
+            total_batches += len(loader)
+
+            # Nettoyage immédiat (RAM descend)
+            del data, dataset, loader, x, y, outputs, loss
+            gc.collect() 
+            torch.cuda.empty_cache() # Vide le cache GPU aussi
+
+        avg_train_loss = total_train_loss / total_batches
+
+        # --- PHASE VALIDATION (Fichier par Fichier) ---
+        model.eval()
+        total_val_loss = 0.0
+        total_val_batches = 0
+        correct_preds = 0
+        total_samples = 0
+
+        print("   [Val] Evaluation...")
+        with torch.no_grad():
+            for f_path in val_files:
+                data = torch.load(f_path)
+                dataset = TensorDataset(data['inputs'], data['labels'])
+                loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
                 
-                _, predicted = torch.max(outputs, 1)
-                total_preds += y.size(0)
-                correct_preds += (predicted == y).sum().item()
+                for x, y in loader:
+                    x, y = x.to(device), y.to(device)
+                    outputs = model(x)
+                    loss = criterion(outputs, y)
+                    total_val_loss += loss.item()
+                    
+                    _, predicted = torch.max(outputs, 1)
+                    total_samples += y.size(0)
+                    correct_preds += (predicted == y).sum().item()
+                
+                total_val_batches += len(loader)
+                
+                # Nettoyage
+                del data, dataset, loader, x, y, outputs
+                gc.collect()
 
-        avg_val_loss = val_running_loss / len(val_loader)
-        accuracy = 100 * correct_preds / total_preds
+        avg_val_loss = total_val_loss / total_val_batches
+        accuracy = 100 * correct_preds / total_samples
 
+        # --- LOGS & SAVE ---
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
 
-        print(f"Epoch {epoch+1}/{EPOCHS} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {accuracy:.2f}%")
+        print(f"   >>> Fin Epoch {epoch+1} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Acc: {accuracy:.2f}%")
 
-        # --- EARLY STOPPING LOGIC ---
         if avg_val_loss < best_val_loss:
-            # C'est un record ! On sauvegarde ce modèle précis.
             best_val_loss = avg_val_loss
             patience_counter = 0
             os.makedirs("../models", exist_ok=True)
             torch.save(model.state_dict(), MODEL_SAVE_PATH)
-            print(f"   >>> Nouveau record ! Modèle sauvegardé.")
+            print("   >>> Modèle sauvegardé (Nouveau Record) 🏆")
         else:
-            # Pas d'amélioration
             patience_counter += 1
             print(f"   >>> Pas d'amélioration ({patience_counter}/{PATIENCE})")
-            
             if patience_counter >= PATIENCE:
-                print(f"⛔ ARRÊT PRÉCOCE (Early Stopping) déclenché à l'époque {epoch+1}.")
-                print("Le modèle commençait à surapprendre (Overfitting).")
+                print("⛔ Early Stopping.")
                 break
 
-    # --- GRAPHIQUE ---
+    # Graphique
     plt.figure(figsize=(10, 5))
-    plt.plot(history['train_loss'], label='Training Loss')
-    plt.plot(history['val_loss'], label='Validation Loss', linestyle='--')
-    
-    # Marquer le point d'arrêt idéal
-    best_epoch = len(history['val_loss']) - patience_counter - 1
-    if patience_counter >= PATIENCE: # Si on s'est arrêté tôt
-         plt.axvline(x=best_epoch, color='g', linestyle=':', label='Meilleur Modèle')
-
-    plt.title('Courbe d\'apprentissage (Loss)')
-    plt.xlabel('Époques')
-    plt.ylabel('Loss')
+    plt.plot(history['train_loss'], label='Train')
+    plt.plot(history['val_loss'], label='Val', linestyle='--')
+    plt.title('Loss')
     plt.legend()
-    plt.grid(True)
-    
     plt.savefig(GRAPH_SAVE_PATH)
-    print(f"Graphique sauvegardé : {GRAPH_SAVE_PATH}")
-    print("Entraînement terminé !")
+    print("Terminé.")
 
 if __name__ == "__main__":
     train()

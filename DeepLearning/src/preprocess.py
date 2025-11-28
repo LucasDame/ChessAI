@@ -1,145 +1,104 @@
 import chess.pgn
 import torch
 import os
-import random
-import glob # Pour trouver tous les fichiers
+import glob
+import gc # Garbage Collector pour libérer la RAM
 from dataset import board_to_tensor, move_to_index
 
 # --- CONFIGURATION ---
-RAW_DATA_DIR = "../data/raw"       # Dossier contenant tes multiples .pgn
-TRAIN_OUTPUT = "../data/train_data.pt"
-VAL_OUTPUT = "../data/val_data.pt"
-
-# Limite globale pour ne pas exploser la RAM
-# 2 Millions de positions = environ 6-8 Go de RAM nécessaire lors du traitement
-MAX_TOTAL_POSITIONS = 2000000  
+RAW_DATA_DIR = "../data/raw"
+OUTPUT_DIR = "../data/processed" # Nouveau dossier pour les chunks
+CHUNK_SIZE = 500000              # Sauvegarde tous les 500k coups
+MAX_TOTAL_POSITIONS = 10000000    # Ton objectif ambitieux
 VAL_RATIO = 0.1
 
 def create_datasets():
-    # 1. Trouver tous les fichiers PGN
-    # On cherche les fichiers qui finissent par .pgn dans le dossier raw
-    pgn_files = glob.glob(os.path.join(RAW_DATA_DIR, "*.pgn"))
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
+    pgn_files = glob.glob(os.path.join(RAW_DATA_DIR, "*.pgn"))
     if not pgn_files:
         print(f"Erreur : Aucun fichier .pgn trouvé dans {RAW_DATA_DIR}")
-        print("Créez le dossier 'raw' et mettez vos fichiers dedans.")
         return
 
-    print(f"Fichiers trouvés ({len(pgn_files)}) :")
-    for f in pgn_files: print(f" - {os.path.basename(f)}")
-
-    data_samples = []
-    total_count = 0
+    # Buffers temporaires
+    train_buffer = []
+    val_buffer = []
     
-    # 2. Boucle sur chaque fichier
+    total_extracted = 0
+    chunk_id = 0
+
+    print(f"Début de l'extraction (Mode Chunking). Objectif : {MAX_TOTAL_POSITIONS}")
+
     for pgn_path in pgn_files:
-        if total_count >= MAX_TOTAL_POSITIONS:
-            break
-            
-        print(f"\n--- Traitement de {os.path.basename(pgn_path)} ---")
+        if total_extracted >= MAX_TOTAL_POSITIONS: break
+        
+        print(f"\nLecture de : {os.path.basename(pgn_path)}")
         pgn = open(pgn_path)
-        file_count = 0
         
         while True:
-            # Sécurité globale
-            if total_count >= MAX_TOTAL_POSITIONS:
-                print("Limite globale atteinte !")
-                break
-
+            if total_extracted >= MAX_TOTAL_POSITIONS: break
+            
             try:
                 game = chess.pgn.read_game(pgn)
             except: continue
-            
-            # ... (Lecture du jeu juste avant) ...
-            
-            if game is None: 
-                break
+            if game is None: break
 
-            # --- FILTRES DE QUALITÉ ---
+            # --- FILTRES (ELO + TEMPS) ---
             headers = game.headers
-
-            # 1. Filtre ELO (Niveau des joueurs)
             try:
-                white_elo = int(headers.get("WhiteElo", 0))
-                black_elo = int(headers.get("BlackElo", 0))
-                # On veut que les DEUX joueurs soient forts
-                if white_elo < 2200 or black_elo < 2200: 
-                    continue 
+                # 1. ELO > 2200
+                if int(headers.get("WhiteElo", 0)) < 2200 or int(headers.get("BlackElo", 0)) < 2200:
+                    continue
+                
+                # 2. TEMPS (Anti-Bullet)
+                # On veut au moins 180 secondes (3 minutes)
+                time_control = headers.get("TimeControl", "")
+                if not time_control or "?" in time_control: continue
+                
+                if "+" in time_control:
+                    base = int(time_control.split("+")[0])
+                else:
+                    base = int(time_control)
+                
+                if base < 180: continue # C'est du Bullet/UltraBullet
             except: continue
 
-            # 2. Filtre TEMPS (Exclure le Bullet)
-            # Format TimeControl : "300+0" (300 secondes + 0 incrément)
-            time_control = headers.get("TimeControl", "")
-            
-            # On ignore les parties sans temps défini
-            if not time_control or "?" in time_control:
-                continue
-
-            try:
-                if "+" in time_control:
-                    base_time, increment = time_control.split("+")
-                    base_time = int(base_time)
-                else:
-                    base_time = int(time_control)
-
-                # RÈGLE : On rejette tout ce qui est en dessous de 180 secondes (3 minutes)
-                # Bullet = < 180s. Blitz = 180s à 480s. Rapid/Classical > 480s.
-                if base_time < 180: 
-                    continue 
-            except:
-                continue # Si le format est bizarre, on ignore par sécurité
-
-            # ... (La suite avec board_to_tensor reste inchangée) ...
-
+            # --- EXTRACTION ---
             board = game.board()
             for move in game.mainline_moves():
-                # On capture
                 tensor = board_to_tensor(board)
                 move_idx = move_to_index(move)
                 
-                # On stocke (Attention, cela consomme de la RAM)
-                data_samples.append((tensor, move_idx))
+                # Répartition aléatoire immédiate (90% train, 10% val)
+                # On utilise un hash simple pour la déterministe ou random
+                if hash(str(board)) % 10 == 0: # Environ 10%
+                    val_buffer.append((tensor, move_idx))
+                else:
+                    train_buffer.append((tensor, move_idx))
                 
                 board.push(move)
-                total_count += 1
-                file_count += 1
-                
-                if total_count % 50000 == 0: 
-                    print(f"   > Total accumulé : {total_count}")
-                    
-                if total_count >= MAX_TOTAL_POSITIONS: break
-        
-        print(f"Fin du fichier. {file_count} positions extraites.")
+                total_extracted += 1
 
-    # 3. Mélange et Sauvegarde
-    print(f"\nExtraction terminée. Total final : {total_count} positions.")
+                # --- SAUVEGARDE INCREMENTALE (CHUNKING) ---
+                # Si le buffer Train est plein, on sauvegarde et on vide
+                if len(train_buffer) >= CHUNK_SIZE:
+                    save_chunk(train_buffer, "train", chunk_id)
+                    train_buffer = [] # Libère la RAM
+                    gc.collect()      # Force le nettoyage
+                    chunk_id += 1
+                    print(f"   > Chunk {chunk_id-1} sauvegardé. Total: {total_extracted}")
+
+    # Sauvegarde des restes
+    if train_buffer: save_chunk(train_buffer, "train", chunk_id)
+    if val_buffer: save_chunk(val_buffer, "val", 0) # On met tout le val dans un seul fichier souvent
     
-    if total_count == 0:
-        print("Aucune position extraite ! Vérifiez vos filtres ELO ou vos fichiers.")
-        return
+    print("\nTerminé !")
 
-    print("Mélange des données (Shuffle)...")
-    random.shuffle(data_samples)
-
-    # Séparation
-    split_idx = int(len(data_samples) * (1 - VAL_RATIO))
-    train_samples = data_samples[:split_idx]
-    val_samples = data_samples[split_idx:]
-
-    print(f"Train set: {len(train_samples)} | Val set: {len(val_samples)}")
-
-    def save_split(samples, filename):
-        if not samples: return
-        print(f"Conversion Tenseurs pour {filename} (Patience, ça peut prendre du temps)...")
-        # stack est l'opération lourde en RAM
-        inputs = torch.stack([s[0] for s in samples])
-        labels = torch.tensor([s[1] for s in samples], dtype=torch.long)
-        torch.save({'inputs': inputs, 'labels': labels}, filename)
-        print(f"Sauvegardé : {filename}")
-
-    save_split(train_samples, TRAIN_OUTPUT)
-    save_split(val_samples, VAL_OUTPUT)
-    print("\nTout est prêt pour l'entraînement !")
+def save_chunk(data, prefix, idx):
+    filename = os.path.join(OUTPUT_DIR, f"{prefix}_part_{idx}.pt")
+    inputs = torch.stack([s[0] for s in data])
+    labels = torch.tensor([s[1] for s in data], dtype=torch.long)
+    torch.save({'inputs': inputs, 'labels': labels}, filename)
 
 if __name__ == "__main__":
     create_datasets()
