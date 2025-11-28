@@ -15,7 +15,7 @@ import chess # Bibliothèque python-chess pour gérer le FEN pour l'IA
 # --- CHEMINS (A ADAPTER SELON TA CONFIGURATION) ---
 # Chemin vers ton exécutable compilé C
 # Si tu es sous Windows avec WSL, garde le /mnt/c/...
-LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/API_negamax"
+LINUX_ENGINE_PATH = "../ChessEngine/API_negamax"
 
 # Ajout du dossier DeepLearning au path pour trouver dl_ai_player.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,14 +78,27 @@ class ChessAPIClient:
         self.connect_to_server()
 
     def launch_server(self):
-        # Commande pour lancer le moteur via WSL
+        # On sépare le chemin pour gérer les espaces correctement si nécessaire
+        # Mais avec subprocess et une liste, les espaces sont souvent gérés automatiquement.
+        # Vérifions d'abord si le fichier existe côté Windows pour éviter une erreur silencieuse
+        
+        # Note : os.path.exists vérifie le chemin Windows (C:\...), pas le chemin WSL (/mnt/c/...)
+        # On fait confiance au chemin donné.
+        
+        print(f"[PYTHON] Lancement de : wsl {LINUX_ENGINE_PATH}")
         cmd = ["wsl", LINUX_ENGINE_PATH]
+        
         try:
-            # creationflags=subprocess.CREATE_NEW_CONSOLE ouvre une fenêtre séparée (Windows)
-            self.process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
-            print("[PYTHON] Moteur C lancé via WSL.")
+            # On utilise shell=False (par défaut) pour que la liste d'arguments gère les espaces
+            self.process = subprocess.Popen(cmd, 
+                                          stdin=subprocess.PIPE, # Important pour éviter les conflits d'entrée
+                                          stdout=subprocess.PIPE, # On pourrait lire la sortie pour débugger
+                                          stderr=subprocess.PIPE)
+            print("[PYTHON] Processus C démarré.")
         except FileNotFoundError:
-            print(f"[ERREUR] Impossible de lancer : {cmd}")
+            print(f"[ERREUR CRITIQUE] Impossible de trouver 'wsl' ou le fichier.")
+        except Exception as e:
+            print(f"[ERREUR LANCEMENT] {e}")
 
     def connect_to_server(self):
         print(f"[PYTHON] Tentative de connexion à {HOST}:{PORT}...")

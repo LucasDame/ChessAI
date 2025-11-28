@@ -1,22 +1,38 @@
 import torch
 import chess
+import os  # <--- INDISPENSABLE pour les chemins
 from model import ChessNet
 from dataset import board_to_tensor, index_to_move
 
-MODEL_PATH = "../models/chess_model.pth"
+# --- CORRECTION DU CHEMIN (Le point critique) ---
+# On récupère le dossier où se trouve CE fichier (DeepLearning/src)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# On construit le chemin absolu vers le modèle (DeepLearning/models/chess_model.pth)
+# On remonte d'un cran ("..") puis on va dans "models"
+MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", "chess_model.pth")
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# --- Initialisation du Modèle (fait une seule fois pour la vitesse) ---
+# --- Initialisation du Modèle ---
 def load_model():
-    # S'assurer que les poids correspondent à l'architecture
+    # Debug : Afficher où on cherche le fichier
+    print(f"[DEBUG DL] Recherche du modèle ici : {MODEL_PATH}")
+    
+    if not os.path.exists(MODEL_PATH):
+        print(f"[ERREUR CRITIQUE] Le fichier modèle est introuvable !")
+        print(f" -> Avez-vous lancé l'entraînement (train.py) ?")
+        return None
+
     model = ChessNet().to(DEVICE)
     try:
+        # map_location permet de charger sur CPU même si entraîné sur GPU
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
         model.eval() # Très important pour désactiver Dropout/BatchNorm en inférence
-        print(f"Modèle DL chargé sur {DEVICE}.")
+        print(f"[SUCCÈS] Modèle DL chargé sur {DEVICE}.")
         return model
     except Exception as e:
-        print(f"Erreur lors du chargement du modèle : {e}")
+        print(f"[ERREUR] Échec lors du chargement des poids : {e}")
         return None
 
 CHESS_MODEL = load_model()
@@ -24,7 +40,7 @@ CHESS_MODEL = load_model()
 def get_dl_move(fen_string: str) -> str:
     """Prédit le meilleur coup pour une position donnée."""
     if CHESS_MODEL is None:
-        return "" # Échoue si le modèle n'est pas chargé
+        return "" # Retourne vide si pas de modèle, l'UI gérera l'erreur
 
     board = chess.Board(fen_string)
     
@@ -44,28 +60,27 @@ def get_dl_move(fen_string: str) -> str:
     best_move_obj = index_to_move(best_index)
     
     # 5. Vérification Légale (IMPORTANT)
-    # Le NN peut suggérer un coup illégal (ex: le roi en échec). 
-    # On doit le vérifier dans le moteur C ou ici. Faisons-le ici pour l'instant.
     
-    # Si le coup suggéré est légal, on le retourne
+    # Si le coup suggéré est légal, on le retourne (format SAN ex: "Nf3")
     if best_move_obj in board.legal_moves:
-        return board.san(best_move_obj) # Retourne au format standard (e4, Nf3)
+        return board.san(best_move_obj)
     
-    # Sinon, on cherche un coup légal
-    # On itère sur les 10 meilleurs coups pour trouver le premier coup légal
+    # Sinon, on cherche un coup légal dans les 10 meilleurs choix
     top_10_indices = torch.topk(output, 10).indices.squeeze().tolist()
 
     for idx in top_10_indices:
         candidate_move = index_to_move(idx)
         if candidate_move in board.legal_moves:
-            print(f"WARN: Coup {best_move_obj} illégal. Choix du coup N°{idx}: {board.san(candidate_move)}")
+            print(f"[IA DEBUG] Coup préféré {best_move_obj} illégal. Choix alternatif : {board.san(candidate_move)}")
             return board.san(candidate_move)
             
-    # Si vraiment aucun des top 10 n'est légal, on prend le premier coup légal trouvé
-    return board.san(list(board.legal_moves)[0]) 
+    # Si vraiment aucun des top 10 n'est légal (très rare), on prend le premier coup légal possible
+    fallback_move = list(board.legal_moves)[0]
+    print(f"[IA DEBUG] Aucun coup valide trouvé dans le Top 10. Fallback sur : {board.san(fallback_move)}")
+    return board.san(fallback_move)
 
 # --- Exemple de Test ---
 if __name__ == '__main__':
-    # Position de départ
+    # Ce bloc ne s'exécute que si on lance ce fichier directement
     move = get_dl_move(chess.STARTING_FEN)
     print(f"Le modèle prédit : {move}")
