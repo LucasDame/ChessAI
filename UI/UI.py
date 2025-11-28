@@ -6,24 +6,22 @@ import queue
 import socket
 import time
 import os
-import chess # Bibliothèque python-chess pour gérer le FEN pour l'IA
+import chess # Bibliothèque python-chess pour le FEN
 
 # =============================================================================
 #                               CONFIGURATION
 # =============================================================================
 
 # --- CHEMINS (A ADAPTER SELON TA CONFIGURATION) ---
-# Chemin vers ton exécutable compilé C
-# Si tu es sous Windows avec WSL, garde le /mnt/c/...
-LINUX_ENGINE_PATH = "../ChessEngine/API_negamax"
+LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/API_negamax"
 
 # Ajout du dossier DeepLearning au path pour trouver dl_ai_player.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR) # Remonte d'un cran (ChessProject/)
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DL_SRC_DIR = os.path.join(PROJECT_ROOT, "DeepLearning", "src")
 sys.path.append(DL_SRC_DIR)
 
-# Import de ton IA
+# Import de ton IA DL
 try:
     from dl_ai_player import get_dl_move
     AI_AVAILABLE = True
@@ -50,18 +48,77 @@ COLOR_LIGHT = (234, 235, 200)
 COLOR_DARK = (119, 149, 86)   
 COLOR_HIGHLIGHT = (255, 255, 0, 100) 
 COLOR_LAST_MOVE = (255, 170, 0, 150) 
-
 COLOR_PANEL = (40, 40, 40)
 COLOR_TEXT = (220, 220, 220)
 COLOR_BTN = (70, 70, 70)
 COLOR_BTN_HOVER = (100, 100, 100)
+COLOR_DROPDOWN_BG = (255, 255, 255)
+COLOR_DROPDOWN_HOVER = (200, 200, 255)
 
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
-PIECE_SYMBOLS = {
-    'wP': 'P', 'wN': 'N', 'wB': 'B', 'wR': 'R', 'wQ': 'Q', 'wK': 'K',
-    'bP': 'p', 'bN': 'n', 'bB': 'b', 'bR': 'r', 'bQ': 'q', 'bK': 'k'
-}
+# =============================================================================
+#                               WIDGETS (Dropdown)
+# =============================================================================
+
+class Dropdown:
+    def __init__(self, x, y, w, h, font, main_color, hover_color, options):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.font = font
+        self.main_color = main_color
+        self.hover_color = hover_color
+        self.options = options
+        self.selected_index = 0
+        self.is_open = False
+        self.active_option = -1
+        
+    def draw(self, surface):
+        # Dessin de la boîte principale
+        pygame.draw.rect(surface, self.main_color, self.rect)
+        pygame.draw.rect(surface, (0,0,0), self.rect, 2) # Bordure
+        
+        # Texte sélectionné
+        msg = self.font.render(self.options[self.selected_index], 1, (0,0,0))
+        surface.blit(msg, msg.get_rect(center=self.rect.center))
+        
+        # Dessin du menu déroulant si ouvert
+        if self.is_open:
+            for i, option in enumerate(self.options):
+                rect = pygame.Rect(self.rect.x, self.rect.y + (i+1)*self.rect.height, self.rect.width, self.rect.height)
+                color = self.hover_color if i == self.active_option else self.main_color
+                pygame.draw.rect(surface, color, rect)
+                pygame.draw.rect(surface, (0,0,0), rect, 1)
+                
+                msg = self.font.render(option, 1, (0,0,0))
+                surface.blit(msg, msg.get_rect(center=rect.center))
+
+    def update(self, event_list):
+        mpos = pygame.mouse.get_pos()
+        self.active_option = -1
+        
+        if self.is_open:
+            for i in range(len(self.options)):
+                rect = pygame.Rect(self.rect.x, self.rect.y + (i+1)*self.rect.height, self.rect.width, self.rect.height)
+                if rect.collidepoint(mpos):
+                    self.active_option = i
+                    break
+        
+        for event in event_list:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.is_open:
+                    if self.active_option != -1:
+                        self.selected_index = self.active_option
+                        self.is_open = False
+                    elif not self.rect.collidepoint(mpos):
+                        self.is_open = False
+                    else:
+                        self.is_open = not self.is_open
+                else:
+                    if self.rect.collidepoint(mpos):
+                        self.is_open = not self.is_open
+
+    def get_selected(self):
+        return self.selected_index, self.options[self.selected_index]
 
 # =============================================================================
 #                               CLIENT RESEAU
@@ -78,25 +135,11 @@ class ChessAPIClient:
         self.connect_to_server()
 
     def launch_server(self):
-        # On sépare le chemin pour gérer les espaces correctement si nécessaire
-        # Mais avec subprocess et une liste, les espaces sont souvent gérés automatiquement.
-        # Vérifions d'abord si le fichier existe côté Windows pour éviter une erreur silencieuse
-        
-        # Note : os.path.exists vérifie le chemin Windows (C:\...), pas le chemin WSL (/mnt/c/...)
-        # On fait confiance au chemin donné.
-        
         print(f"[PYTHON] Lancement de : wsl {LINUX_ENGINE_PATH}")
         cmd = ["wsl", LINUX_ENGINE_PATH]
-        
         try:
-            # On utilise shell=False (par défaut) pour que la liste d'arguments gère les espaces
-            self.process = subprocess.Popen(cmd, 
-                                          stdin=subprocess.PIPE, # Important pour éviter les conflits d'entrée
-                                          stdout=subprocess.PIPE, # On pourrait lire la sortie pour débugger
-                                          stderr=subprocess.PIPE)
+            self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             print("[PYTHON] Processus C démarré.")
-        except FileNotFoundError:
-            print(f"[ERREUR CRITIQUE] Impossible de trouver 'wsl' ou le fichier.")
         except Exception as e:
             print(f"[ERREUR LANCEMENT] {e}")
 
@@ -130,7 +173,6 @@ class ChessAPIClient:
     def send_command(self, cmd):
         if self.sock:
             try:
-                # Ajout du saut de ligne pour que le C détecte la fin de commande
                 msg = cmd + "\n"
                 self.sock.sendall(msg.encode('utf-8'))
             except Exception as e:
@@ -154,7 +196,7 @@ class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Chess AI - Deep Learning Edition")
+        pygame.display.set_caption("Chess AI - Project")
         self.clock = pygame.time.Clock()
         
         self.font = pygame.font.SysFont("Arial", 18) 
@@ -162,16 +204,10 @@ class Game:
         
         self.images = {}
         self.load_images()
-        
-        # Plateau visuel (Tableau 8x8 de strings)
         self.visual_board = [["--" for _ in range(8)] for _ in range(8)]
-        
-        # Plateau Logique (python-chess) pour générer les FEN corrects pour l'IA
         self.py_board = chess.Board() 
-        
         self.init_standard_visual_board()
         
-        # État du jeu
         self.selected_sq = () 
         self.player_clicks = [] 
         self.move_log = []      
@@ -180,7 +216,6 @@ class Game:
         self.client = ChessAPIClient()
 
     def init_standard_visual_board(self):
-        # Initialisation manuelle pour l'affichage avant connexion
         self.visual_board = [
             ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
             ["bP", "bP", "bP", "bP", "bP", "bP", "bP", "bP"],
@@ -199,52 +234,76 @@ class Game:
             try:
                 img = pygame.image.load(path)
                 self.images[piece] = pygame.transform.scale(img, (SQ_SIZE, SQ_SIZE))
-            except: 
-                print(f"[WARN] Image manquante : {piece}")
+            except: pass
 
     def show_start_screen(self):
         intro = True
+        
+        # Création des Dropdowns
+        # Adversaires
+        opponents = ["Humain vs Humain", "IA C (Minimax)", "IA DL (PyTorch)"]
+        dd_opponent = Dropdown(WIDTH//2 - 150, 200, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, opponents)
+        
+        # Couleurs
+        colors = ["Je joue les Blancs", "Je joue les Noirs"]
+        dd_color = Dropdown(WIDTH//2 - 150, 300, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, colors)
+        
+        # Bouton Jouer
+        btn_play = pygame.Rect(WIDTH//2 - 100, 450, 200, 60)
+
         while intro:
             self.screen.fill(COLOR_LIGHT)
+            
             # Titre
-            title = self.font_big.render("CHESS AI PROJECT", True, (50, 50, 50))
-            self.screen.blit(title, (WIDTH//2 - title.get_width()//2, 100))
+            title = self.font_big.render("CONFIGURATION DE LA PARTIE", True, (50, 50, 50))
+            self.screen.blit(title, (WIDTH//2 - title.get_width()//2, 80))
             
-            # Boutons
-            cx = WIDTH // 2
-            btn_pvp = pygame.Rect(cx - 150, HEIGHT//2 - 60, 300, 50)
-            btn_white = pygame.Rect(cx - 150, HEIGHT//2, 300, 50) # Jouer Blanc vs IA
-            btn_black = pygame.Rect(cx - 150, HEIGHT//2 + 60, 300, 50) # Jouer Noir vs IA
+            # Labels
+            lbl_opp = self.font.render("Choisir l'adversaire :", True, (50, 50, 50))
+            self.screen.blit(lbl_opp, (WIDTH//2 - 150, 175))
             
+            lbl_col = self.font.render("Choisir votre couleur :", True, (50, 50, 50))
+            self.screen.blit(lbl_col, (WIDTH//2 - 150, 275))
+
+            # Gestion Evènements
+            event_list = pygame.event.get()
+            for event in event_list:
+                if event.type == pygame.QUIT:
+                    self.client.close(); pygame.quit(); sys.exit()
+                
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if btn_play.collidepoint(event.pos):
+                        # Récupération des choix
+                        idx_opp, str_opp = dd_opponent.get_selected()
+                        idx_col, str_col = dd_color.get_selected()
+                        
+                        # Mapping
+                        mode = 'pvp'
+                        if idx_opp == 1: mode = 'pve_c'
+                        elif idx_opp == 2: mode = 'pve_dl'
+                        
+                        color = 'w' if idx_col == 0 else 'b'
+                        return mode, color
+
+            # Update Dropdowns
+            dd_opponent.update(event_list)
+            dd_color.update(event_list)
+
+            # Dessin
+            # On dessine le bouton JOUER
             mx, my = pygame.mouse.get_pos()
-            
-            for btn, text, mode in [
-                (btn_pvp, "Humain vs Humain", ('pvp', 'w')), 
-                (btn_white, "Jouer BLANCS vs IA", ('pve', 'w')), 
-                (btn_black, "Jouer NOIRS vs IA", ('pve', 'b'))
-            ]:
-                col = (180, 180, 180) if btn.collidepoint((mx, my)) else (140, 140, 140)
-                pygame.draw.rect(self.screen, col, btn)
-                txt_surf = self.font_big.render(text, True, (255,255,255))
-                txt_rect = txt_surf.get_rect(center=btn.center)
-                self.screen.blit(txt_surf, txt_rect)
+            col_play = (100, 200, 100) if btn_play.collidepoint((mx, my)) else (150, 150, 150)
+            pygame.draw.rect(self.screen, col_play, btn_play)
+            txt_play = self.font_big.render("JOUER", True, (255, 255, 255))
+            self.screen.blit(txt_play, txt_play.get_rect(center=btn_play.center))
+
+            # On dessine les dropdowns (Color d'abord, Opponent ensuite pour que Opponent passe au dessus si ouvert)
+            dd_color.draw(self.screen)
+            dd_opponent.draw(self.screen)
 
             pygame.display.update()
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.client.close(); pygame.quit(); sys.exit()
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if btn_pvp.collidepoint(event.pos): return ('pvp', 'w')
-                    elif btn_white.collidepoint(event.pos): return ('pve', 'w')
-                    elif btn_black.collidepoint(event.pos): return ('pve', 'b')
-
-    def get_promotion_choice(self, color):
-        # Simple popup pour promotion
-        return 'q' # Par défaut Reine pour simplifier l'exemple
-
     def update_visual_board_from_string(self, board_str):
-        # Met à jour le plateau visuel depuis le string envoyé par le C
         char_to_piece = {'P':'wP','N':'wN','B':'wB','R':'wR','Q':'wQ','K':'wK','p':'bP','n':'bN','b':'bB','r':'bR','q':'bQ','k':'bK','-':'--'}
         limit = min(len(board_str), 64)
         for i in range(limit):
@@ -264,29 +323,21 @@ class Game:
 
     def draw_sidebar(self, turn):
         pygame.draw.rect(self.screen, COLOR_PANEL, (BOARD_WIDTH, 0, PANEL_WIDTH, HEIGHT))
-        
-        # Titre
         title = self.font_big.render("Historique", True, COLOR_TEXT)
         self.screen.blit(title, (BOARD_WIDTH + 20, 20))
-        
-        # Liste des coups
         y = 70
         start_index = max(0, len(self.move_log) - 18)
         for i, move in enumerate(self.move_log[start_index:]): 
             color = (255, 255, 255) if (start_index + i) % 2 == 0 else (170, 170, 170)
             txt = f"{start_index + i + 1}. {move}"
-            text_surf = self.font.render(txt, True, color)
-            self.screen.blit(text_surf, (BOARD_WIDTH + 20, y))
+            self.screen.blit(self.font.render(txt, True, color), (BOARD_WIDTH + 20, y))
             y += 25
-
-        # Bouton UNDO
         btn_undo = pygame.Rect(BOARD_WIDTH + 25, HEIGHT - 70, 200, 50)
         mouse_pos = pygame.mouse.get_pos()
         col = COLOR_BTN_HOVER if btn_undo.collidepoint(mouse_pos) else COLOR_BTN
         pygame.draw.rect(self.screen, col, btn_undo)
         undo_txt = self.font_big.render("ANNULER", True, (255, 255, 255))
         self.screen.blit(undo_txt, undo_txt.get_rect(center=btn_undo.center))
-        
         return btn_undo
 
     def draw_board(self, orientation='w'):
@@ -296,112 +347,81 @@ class Game:
                 color = colors[((r + c) % 2)]
                 draw_r, draw_c = (r, c) if orientation == 'w' else (7-r, 7-c)
                 pygame.draw.rect(self.screen, color, pygame.Rect(draw_c*SQ_SIZE, draw_r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
-                
-                # Highlights
                 if self.last_move:
                     if (r, c) in self.last_move:
-                        s = pygame.Surface((SQ_SIZE, SQ_SIZE))
-                        s.set_alpha(150); s.fill(COLOR_LAST_MOVE)
+                        s = pygame.Surface((SQ_SIZE, SQ_SIZE)); s.set_alpha(150); s.fill(COLOR_LAST_MOVE)
                         self.screen.blit(s, (draw_c*SQ_SIZE, draw_r*SQ_SIZE))
-
                 if self.selected_sq == (r, c):
-                    s = pygame.Surface((SQ_SIZE, SQ_SIZE))
-                    s.set_alpha(100); s.fill(COLOR_HIGHLIGHT)
+                    s = pygame.Surface((SQ_SIZE, SQ_SIZE)); s.set_alpha(100); s.fill(COLOR_HIGHLIGHT)
                     self.screen.blit(s, (draw_c*SQ_SIZE, draw_r*SQ_SIZE))
 
     def draw_pieces(self, orientation='w'):
         for r in range(DIMENSION):
             for c in range(DIMENSION):
                 piece = self.visual_board[r][c]
-                if piece != "--":
+                if piece != "--" and piece in self.images:
                     draw_r, draw_c = (r, c) if orientation == 'w' else (7-r, 7-c)
-                    if piece in self.images:
-                        self.screen.blit(self.images[piece], pygame.Rect(draw_c*SQ_SIZE, draw_r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
+                    self.screen.blit(self.images[piece], pygame.Rect(draw_c*SQ_SIZE, draw_r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
     # =========================================================================
     #                               BOUCLE DE JEU
     # =========================================================================
     def run(self):
         game_mode, player_color = self.show_start_screen()
-        
-        # Si on joue Blanc, l'IA est 'b', sinon 'w'
         ai_color = 'b' if player_color == 'w' else 'w'
-        
         running = True
         turn = 'w' 
         ai_thinking = False
         
         while running:
-            # 1. Gestion Réseau (Mise à jour état)
+            # 1. Gestion Réseau
             messages = self.client.get_messages()
             for msg in messages:
                 print(f"[API] {msg}")
                 if "illegal" in msg:
-                    # Coup refusé par le C : on annule visuellement
-                    print("Coup illégal détecté !")
                     if self.move_log: 
-                        cancelled_move = self.move_log.pop()
-                        try: self.py_board.pop() # Annule aussi dans python-chess
+                        self.move_log.pop(); 
+                        try: self.py_board.pop() 
                         except: pass
-                    
-                    if self.move_log:
-                        self.last_move = self.parse_move_to_indices(self.move_log[-1])
-                    else:
-                        self.last_move = []
+                    self.last_move = self.parse_move_to_indices(self.move_log[-1]) if self.move_log else []
                     ai_thinking = False
-
                 parts = msg.split(' ')
                 for part in parts:
                     if part.startswith("board:"):
-                        raw_board = part.split(":")[1]
-                        if len(raw_board) == 64:
-                            self.update_visual_board_from_string(raw_board)
-                            # Changement de tour logique
-                            turn = 'b' if turn == 'w' else 'w'
-                            if turn == player_color: ai_thinking = False
-                            
-                    elif "game_over" in part:
-                        print(f"FIN: {part}")
-                        ai_thinking = True 
+                        self.update_visual_board_from_string(part.split(":")[1])
+                        turn = 'b' if turn == 'w' else 'w'
+                        if turn == player_color: ai_thinking = False
+                    elif "game_over" in part: ai_thinking = True 
 
-            # 2. IA DEEP LEARNING (Si c'est son tour)
-            if game_mode == 'pve' and turn == ai_color and not ai_thinking:
+            # 2. IA LOGIQUE
+            if game_mode != 'pvp' and turn == ai_color and not ai_thinking:
                 ai_thinking = True
                 
-                # On utilise python-chess pour générer le FEN parfait pour le réseau
-                fen = self.py_board.fen()
-                print(f"[IA] Réfléchit sur : {fen}")
+                # --- CAS 1: IA Deep Learning ---
+                if game_mode == 'pve_dl':
+                    fen = self.py_board.fen()
+                    print(f"[IA DL] Réfléchit sur : {fen}")
+                    if AI_AVAILABLE:
+                        def ai_thread_func():
+                            try:
+                                time.sleep(0.5) 
+                                ai_move_san = get_dl_move(fen)
+                                if not ai_move_san: return
+                                move_obj = self.py_board.parse_san(ai_move_san)
+                                uci_move = move_obj.uci()
+                                print(f"[IA DL] Joue : {uci_move}")
+                                self.client.send_command(uci_move)
+                                self.move_log.append(uci_move)
+                                self.last_move = self.parse_move_to_indices(uci_move)
+                                self.py_board.push(move_obj)
+                            except Exception as e: print(f"[ERREUR IA] {e}")
+                        threading.Thread(target=ai_thread_func).start()
                 
-                # --- APPEL AU MODELE ---
-                if AI_AVAILABLE:
-                    # L'IA nous donne un coup algébrique (ex: e7e5)
-                    # On utilise threading pour ne pas figer l'interface
-                    def ai_thread_func():
-                        try:
-                            # Petit délai pour voir l'action
-                            time.sleep(0.5) 
-                            ai_move_san = get_dl_move(fen) # Peut retourner SAN (e5) ou UCI (e7e5)?
-                            
-                            # Conversion si nécessaire
-                            # get_dl_move retourne du SAN (e.g. "Nf3"), on le convertit en UCI pour le moteur C
-                            move_obj = self.py_board.parse_san(ai_move_san)
-                            uci_move = move_obj.uci()
-                            
-                            print(f"[IA] Joue : {uci_move}")
-                            self.client.send_command(uci_move)
-                            self.move_log.append(uci_move)
-                            self.last_move = self.parse_move_to_indices(uci_move)
-                            
-                            # Mise à jour synchronisée du board Python
-                            self.py_board.push(move_obj)
-                            
-                        except Exception as e:
-                            print(f"[ERREUR IA] {e}")
-
-                    t = threading.Thread(target=ai_thread_func)
-                    t.start()
-                else:
-                    print("[ERREUR] IA non disponible.")
+                # --- CAS 2: IA C Engine ---
+                elif game_mode == 'pve_c':
+                    # L'IA C attend la commande 'go' pour jouer
+                    print("[IA C] Commande envoyée: go")
+                    self.client.send_command("go")
 
             # 3. Dessin
             self.screen.fill((0,0,0)) 
@@ -410,57 +430,39 @@ class Game:
             btn_undo = self.draw_sidebar(turn)
             pygame.display.flip()
 
-            # 4. Gestion Événements
+            # 4. Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.client.send_command("quit"); running = False
-                
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # --- UNDO ---
                     if btn_undo.collidepoint(event.pos):
                         if not ai_thinking:
-                            print("Undo...")
-                            undo_cnt = 2 if game_mode == 'pve' else 1
+                            undo_cnt = 2 if game_mode != 'pvp' else 1
                             if len(self.move_log) >= undo_cnt:
                                 for _ in range(undo_cnt):
                                     self.client.send_command("undo")
                                     if self.move_log: self.move_log.pop()
-                                    try: self.py_board.pop()
+                                    try: self.py_board.pop() 
                                     except: pass
                                     turn = 'b' if turn == 'w' else 'w'
-                                
-                                if self.move_log:
-                                    self.last_move = self.parse_move_to_indices(self.move_log[-1])
-                                else:
-                                    self.last_move = []
+                                self.last_move = self.parse_move_to_indices(self.move_log[-1]) if self.move_log else []
                         continue
 
-                    # --- JEU HUMAIN ---
                     if event.pos[0] > BOARD_WIDTH: continue
-                    if (game_mode == 'pve' and turn != player_color) or ai_thinking: continue
+                    if (game_mode != 'pvp' and turn != player_color) or ai_thinking: continue
 
-                    col = event.pos[0] // SQ_SIZE
-                    row = event.pos[1] // SQ_SIZE
+                    col, row = event.pos[0] // SQ_SIZE, event.pos[1] // SQ_SIZE
                     if player_color == 'b': col, row = 7 - col, 7 - row
                     
-                    if self.selected_sq == (row, col):
-                        self.selected_sq = (); self.player_clicks = []
-                    else:
-                        self.selected_sq = (row, col); self.player_clicks.append(self.selected_sq)
+                    if self.selected_sq == (row, col): self.selected_sq = (); self.player_clicks = []
+                    else: self.selected_sq = (row, col); self.player_clicks.append(self.selected_sq)
                     
                     if len(self.player_clicks) == 2:
                         start, end = self.player_clicks[0], self.player_clicks[1]
-                        move_str = self.col_row_to_algebraic(start[1], start[0]) + \
-                                   self.col_row_to_algebraic(end[1], end[0])
-                        
-                        # Promotion automatique Reine pour simplifier l'UI
+                        move_str = self.col_row_to_algebraic(start[1], start[0]) + self.col_row_to_algebraic(end[1], end[0])
                         piece_moving = self.visual_board[start[0]][start[1]]
                         if piece_moving[1] == 'P':
-                            if (piece_moving[0] == 'w' and end[0] == 0) or \
-                               (piece_moving[0] == 'b' and end[0] == 7):
-                                move_str += 'q'
-                        
-                        # Tentative de jouer le coup sur le board Python pour vérifier la légalité basique
+                            if (piece_moving[0] == 'w' and end[0] == 0) or (piece_moving[0] == 'b' and end[0] == 7): move_str += 'q'
                         try:
                             move_obj = chess.Move.from_uci(move_str)
                             if move_obj in self.py_board.legal_moves:
@@ -468,16 +470,9 @@ class Game:
                                 self.client.send_command(move_str)
                                 self.move_log.append(move_str)
                                 self.last_move = [start, end]
-                            else:
-                                print(f"Coup illégal (Python Check): {move_str}")
-                        except:
-                            # Si c'est une promotion complexe non gérée, on envoie quand même au C
-                            self.client.send_command(move_str)
-
+                        except: self.client.send_command(move_str)
                         self.selected_sq = (); self.player_clicks = []
-
             self.clock.tick(FPS)
-
         self.client.close(); pygame.quit()
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # On construit le chemin absolu vers le modèle (DeepLearning/models/chess_model.pth)
 # On remonte d'un cran ("..") puis on va dans "models"
-MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", "chess_model.pth")
+MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", "chess_model2.pth")
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
