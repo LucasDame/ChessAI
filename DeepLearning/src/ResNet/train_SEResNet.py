@@ -5,36 +5,46 @@ from torch.utils.data import TensorDataset, DataLoader
 import os
 import glob
 import random
-import gc # Garbage Collector pour forcer le nettoyage de la RAM
+import gc
 import matplotlib.pyplot as plt
-from model import ChessNet
+from model_ResNet import ChessNet
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION AVANCÉE ---
 DATA_DIR = "../data/processed"
-MODEL_SAVE_PATH = "../models/chess_model.pth"
-GRAPH_SAVE_PATH = "../models/training_loss.png"
+MODEL_SAVE_PATH = "../models/chess_model_seresnet.pth" # Nouveau nom pour ne pas écraser l'ancien
+GRAPH_SAVE_PATH = "../models/training_loss_seresnet.png"
 
-BATCH_SIZE = 512
-EPOCHS = 20 
+# Hyperparamètres Modèle
+NUM_RES_BLOCKS = 10      # Nombre de blocs (Essaie 10 pour commencer, puis 20)
+NUM_CHANNELS = 128       # Largeur du réseau (64, 128, ou 256)
+USE_SE = True            # Activer Squeeze-and-Excitation ?
+
+# Hyperparamètres Entraînement
+BATCH_SIZE = 512         # Baisse à 256 si tu as une erreur "Out of Memory" GPU
+EPOCHS = 15
 LEARNING_RATE = 0.001
-PATIENCE = 3 # On réduit un peu la patience car 1 époque est très longue maintenant
+PATIENCE = 3
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Entraînement sur : {device}")
+    print(f"--- Configuration ResNet ---")
+    print(f"Device: {device}")
+    print(f"Blocs: {NUM_RES_BLOCKS} | Canaux: {NUM_CHANNELS} | SE: {USE_SE}")
+    print(f"----------------------------")
 
     # 1. Repérage des fichiers
     train_files = glob.glob(os.path.join(DATA_DIR, "train_part_*.pt"))
     val_files = glob.glob(os.path.join(DATA_DIR, "val_part_*.pt"))
     
     if not train_files:
-        print("Erreur : Aucun fichier de données trouvé.")
+        print(f"Erreur : Aucun fichier trouvé dans {DATA_DIR}. Lancez preprocess.py.")
         return
 
-    print(f"Dataset : {len(train_files)} fichiers d'entraînement détectés.")
-
-    # 2. Initialisation
-    model = ChessNet().to(device)
+    # 2. Initialisation du Nouveau Modèle
+    model = ChessNet(num_res_blocks=NUM_RES_BLOCKS, 
+                     num_channels=NUM_CHANNELS, 
+                     use_se=USE_SE).to(device)
+                     
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
@@ -42,49 +52,49 @@ def train():
     best_val_loss = float('inf')
     patience_counter = 0
 
-    print("Début du Streaming...")
+    print("Début de l'entraînement...")
 
     for epoch in range(EPOCHS):
         print(f"\n=== EPOCH {epoch+1}/{EPOCHS} ===")
         
-        # --- PHASE TRAIN (Fichier par Fichier) ---
+        # --- TRAIN ---
         model.train()
         total_train_loss = 0.0
         total_batches = 0
         
-        # On mélange l'ordre des fichiers à chaque époque pour varier
-        random.shuffle(train_files)
+        random.shuffle(train_files) # Mélange les fichiers
 
         for i, f_path in enumerate(train_files):
-            print(f"   [Train] Chargement fichier {i+1}/{len(train_files)} : {os.path.basename(f_path)}")
+            print(f"   [Train] Fichier {i+1}/{len(train_files)} : {os.path.basename(f_path)}")
             
-            # Chargement local (RAM monte)
-            data = torch.load(f_path)
-            dataset = TensorDataset(data['inputs'], data['labels'])
-            loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-            
-            # Entraînement sur ce morceau
-            file_loss = 0.0
-            for x, y in loader:
-                x, y = x.to(device), y.to(device)
-                optimizer.zero_grad()
-                outputs = model(x)
-                loss = criterion(outputs, y)
-                loss.backward()
-                optimizer.step()
-                file_loss += loss.item()
-            
-            total_train_loss += file_loss
-            total_batches += len(loader)
+            try:
+                data = torch.load(f_path)
+                dataset = TensorDataset(data['inputs'], data['labels_move'])
+                
+                loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+                
+                for x, y in loader:
+                    x, y = x.to(device), y.to(device)
+                    optimizer.zero_grad()
+                    outputs = model(x)
+                    loss = criterion(outputs, y)
+                    loss.backward()
+                    optimizer.step()
+                    total_train_loss += loss.item()
+                
+                total_batches += len(loader)
+                
+                # Nettoyage RAM
+                del data, dataset, loader, x, y, outputs, loss
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+            except Exception as e:
+                print(f"Erreur lecture fichier {f_path}: {e}")
 
-            # Nettoyage immédiat (RAM descend)
-            del data, dataset, loader, x, y, outputs, loss
-            gc.collect() 
-            torch.cuda.empty_cache() # Vide le cache GPU aussi
+        avg_train_loss = total_train_loss / max(1, total_batches)
 
-        avg_train_loss = total_train_loss / total_batches
-
-        # --- PHASE VALIDATION (Fichier par Fichier) ---
+        # --- VALIDATION ---
         model.eval()
         total_val_loss = 0.0
         total_val_batches = 0
@@ -109,15 +119,12 @@ def train():
                     correct_preds += (predicted == y).sum().item()
                 
                 total_val_batches += len(loader)
-                
-                # Nettoyage
                 del data, dataset, loader, x, y, outputs
                 gc.collect()
 
-        avg_val_loss = total_val_loss / total_val_batches
-        accuracy = 100 * correct_preds / total_samples
+        avg_val_loss = total_val_loss / max(1, total_val_batches)
+        accuracy = 100 * correct_preds / max(1, total_samples)
 
-        # --- LOGS & SAVE ---
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
 
@@ -126,9 +133,10 @@ def train():
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             patience_counter = 0
+            # Sauvegarde
             os.makedirs("../models", exist_ok=True)
             torch.save(model.state_dict(), MODEL_SAVE_PATH)
-            print("   >>> Modèle sauvegardé (Nouveau Record) 🏆")
+            print("   >>> 🏆 Modèle sauvegardé !")
         else:
             patience_counter += 1
             print(f"   >>> Pas d'amélioration ({patience_counter}/{PATIENCE})")
@@ -140,7 +148,7 @@ def train():
     plt.figure(figsize=(10, 5))
     plt.plot(history['train_loss'], label='Train')
     plt.plot(history['val_loss'], label='Val', linestyle='--')
-    plt.title('Loss')
+    plt.title('Loss ResNet')
     plt.legend()
     plt.savefig(GRAPH_SAVE_PATH)
     print("Terminé.")
