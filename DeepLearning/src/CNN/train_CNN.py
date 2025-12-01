@@ -11,8 +11,8 @@ from model_CNN import ChessNet
 
 # --- CONFIGURATION ---
 DATA_DIR = "../../data/processed"
-MODEL_SAVE_PATH = "../models/chess_model.pth"
-GRAPH_SAVE_PATH = "../models/training_loss.png"
+MODEL_SAVE_PATH = "../../models/chess_model.pth"
+GRAPH_SAVE_PATH = "../../models/training_loss.png"
 
 BATCH_SIZE = 512
 EPOCHS = 20 
@@ -96,7 +96,7 @@ def train():
         with torch.no_grad():
             for f_path in val_files:
                 data = torch.load(f_path)
-                dataset = TensorDataset(data['inputs'], data['labels'])
+                dataset = TensorDataset(data['inputs'], data['labels_move'])
                 loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
                 
                 for x, y in loader:

@@ -12,7 +12,7 @@ echo [ETAPE 1/5] Generation du Dataset Universel (Moves + Results)...
 cd DeepLearning/src
 :: On lance le script qui extrait TOUT (Input + Move + Result)
 :: Assure-toi d'avoir renommé preprocess2.py en preprocess_universal.py
-python3 preprocess_universal.py
+python3 preprocess2.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERREUR] Le preprocess a echoue.

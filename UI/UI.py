@@ -6,31 +6,22 @@ import queue
 import socket
 import time
 import os
-import chess # Bibliothèque python-chess pour le FEN
+import chess 
 
 # =============================================================================
 #                               CONFIGURATION
 # =============================================================================
 
-# --- CHEMINS (A ADAPTER SELON TA CONFIGURATION) ---
+# --- CHEMINS (ADAPTEZ SELON VOTRE CONFIGURATION) ---
 LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/API_negamax"
 
-# Ajout du dossier DeepLearning au path pour trouver dl_ai_player.py
+# Configuration des chemins pour l'IA
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DL_SRC_DIR = os.path.join(PROJECT_ROOT, "DeepLearning", "src")
 sys.path.append(DL_SRC_DIR)
 
-# Import de ton IA DL
-try:
-    from dl_ai_player import get_dl_move
-    AI_AVAILABLE = True
-    print("[INFO] Module DeepLearning chargé avec succès.")
-except ImportError:
-    AI_AVAILABLE = False
-    print("[ATTENTION] Impossible de charger dl_ai_player. Vérifiez les chemins.")
-
-# Dimensions
+# Dimensions & Paramètres
 BOARD_WIDTH = 600
 HEIGHT = 600
 PANEL_WIDTH = 250 
@@ -38,8 +29,6 @@ WIDTH = BOARD_WIDTH + PANEL_WIDTH
 DIMENSION = 8
 SQ_SIZE = HEIGHT // DIMENSION
 FPS = 30
-
-# Réseau
 HOST = "127.0.0.1"
 PORT = 12345
 
@@ -58,7 +47,7 @@ COLOR_DROPDOWN_HOVER = (200, 200, 255)
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 # =============================================================================
-#                               WIDGETS (Dropdown)
+#                               WIDGETS (DROPDOWN)
 # =============================================================================
 
 class Dropdown:
@@ -73,36 +62,29 @@ class Dropdown:
         self.active_option = -1
         
     def draw(self, surface):
-        # Dessin de la boîte principale
         pygame.draw.rect(surface, self.main_color, self.rect)
-        pygame.draw.rect(surface, (0,0,0), self.rect, 2) # Bordure
-        
-        # Texte sélectionné
+        pygame.draw.rect(surface, (0,0,0), self.rect, 2)
         msg = self.font.render(self.options[self.selected_index], 1, (0,0,0))
         surface.blit(msg, msg.get_rect(center=self.rect.center))
         
-        # Dessin du menu déroulant si ouvert
         if self.is_open:
             for i, option in enumerate(self.options):
                 rect = pygame.Rect(self.rect.x, self.rect.y + (i+1)*self.rect.height, self.rect.width, self.rect.height)
                 color = self.hover_color if i == self.active_option else self.main_color
                 pygame.draw.rect(surface, color, rect)
                 pygame.draw.rect(surface, (0,0,0), rect, 1)
-                
                 msg = self.font.render(option, 1, (0,0,0))
                 surface.blit(msg, msg.get_rect(center=rect.center))
 
     def update(self, event_list):
         mpos = pygame.mouse.get_pos()
         self.active_option = -1
-        
         if self.is_open:
             for i in range(len(self.options)):
                 rect = pygame.Rect(self.rect.x, self.rect.y + (i+1)*self.rect.height, self.rect.width, self.rect.height)
                 if rect.collidepoint(mpos):
                     self.active_option = i
                     break
-        
         for event in event_list:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if self.is_open:
@@ -121,7 +103,7 @@ class Dropdown:
         return self.selected_index, self.options[self.selected_index]
 
 # =============================================================================
-#                               CLIENT RESEAU
+#                               CLIENT RESEAU (SOCKET)
 # =============================================================================
 
 class ChessAPIClient:
@@ -131,7 +113,7 @@ class ChessAPIClient:
         self.q = queue.Queue()
         self.running = True
         self.launch_server()
-        time.sleep(1) # Attente démarrage serveur C
+        time.sleep(1)
         self.connect_to_server()
 
     def launch_server(self):
@@ -198,7 +180,6 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Chess AI - Project")
         self.clock = pygame.time.Clock()
-        
         self.font = pygame.font.SysFont("Arial", 18) 
         self.font_big = pygame.font.SysFont("Arial", 28, bold=True)
         
@@ -214,6 +195,9 @@ class Game:
         self.last_move = []     
         
         self.client = ChessAPIClient()
+        
+        # Variable pour stocker la fonction d'IA active
+        self.active_ai_function = None
 
     def init_standard_visual_board(self):
         self.visual_board = [
@@ -236,36 +220,63 @@ class Game:
                 self.images[piece] = pygame.transform.scale(img, (SQ_SIZE, SQ_SIZE))
             except: pass
 
+    def load_ai_model(self, mode):
+        """
+        Charge dynamiquement le module IA correspondant.
+        Cela évite de saturer la RAM en chargeant tous les réseaux.
+        """
+        self.active_ai_function = None
+        
+        if mode == 'pve_cnn':
+            print("[UI] Chargement de l'IA CNN (Simple)...")
+            try:
+                from dl_ai_player import get_dl_move
+                self.active_ai_function = get_dl_move
+            except ImportError as e: print(f"[ERREUR] Import CNN échoué : {e}")
+            
+        elif mode == 'pve_resnet':
+            print("[UI] Chargement de l'IA ResNet (Avancée)...")
+            try:
+                from dl_ai_player_resnet import get_resnet_move
+                self.active_ai_function = get_resnet_move
+            except ImportError as e: print(f"[ERREUR] Import ResNet échoué : {e}")
+            
+        elif mode == 'pve_alphazero':
+            print("[UI] Chargement de l'IA AlphaZero (Experte)...")
+            try:
+                from dl_ai_player_alphazero import get_alphazero_move
+                self.active_ai_function = get_alphazero_move
+            except ImportError as e: print(f"[ERREUR] Import AlphaZero échoué : {e}")
+
     def show_start_screen(self):
         intro = True
         
-        # Création des Dropdowns
-        # Adversaires
-        opponents = ["Humain vs Humain", "IA C (Minimax)", "IA DL (PyTorch)"]
+        # --- MENU DÉROULANT COMPLET ---
+        opponents = [
+            "Humain vs Humain", 
+            "IA C (Minimax)", 
+            "IA Simple (CNN)", 
+            "IA Avancée (ResNet)", 
+            "IA Experte (AlphaZero)"
+        ]
         dd_opponent = Dropdown(WIDTH//2 - 150, 200, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, opponents)
         
-        # Couleurs
         colors = ["Je joue les Blancs", "Je joue les Noirs"]
         dd_color = Dropdown(WIDTH//2 - 150, 300, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, colors)
         
-        # Bouton Jouer
         btn_play = pygame.Rect(WIDTH//2 - 100, 450, 200, 60)
 
         while intro:
             self.screen.fill(COLOR_LIGHT)
-            
-            # Titre
             title = self.font_big.render("CONFIGURATION DE LA PARTIE", True, (50, 50, 50))
             self.screen.blit(title, (WIDTH//2 - title.get_width()//2, 80))
             
-            # Labels
             lbl_opp = self.font.render("Choisir l'adversaire :", True, (50, 50, 50))
             self.screen.blit(lbl_opp, (WIDTH//2 - 150, 175))
             
             lbl_col = self.font.render("Choisir votre couleur :", True, (50, 50, 50))
             self.screen.blit(lbl_col, (WIDTH//2 - 150, 275))
 
-            # Gestion Evènements
             event_list = pygame.event.get()
             for event in event_list:
                 if event.type == pygame.QUIT:
@@ -273,34 +284,34 @@ class Game:
                 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if btn_play.collidepoint(event.pos):
-                        # Récupération des choix
                         idx_opp, str_opp = dd_opponent.get_selected()
                         idx_col, str_col = dd_color.get_selected()
                         
-                        # Mapping
+                        # Mapping des choix vers les modes internes
                         mode = 'pvp'
                         if idx_opp == 1: mode = 'pve_c'
-                        elif idx_opp == 2: mode = 'pve_dl'
+                        elif idx_opp == 2: mode = 'pve_cnn'
+                        elif idx_opp == 3: mode = 'pve_resnet'
+                        elif idx_opp == 4: mode = 'pve_alphazero'
                         
                         color = 'w' if idx_col == 0 else 'b'
+                        
+                        # On charge le cerveau IA ici
+                        self.load_ai_model(mode)
+                        
                         return mode, color
 
-            # Update Dropdowns
             dd_opponent.update(event_list)
             dd_color.update(event_list)
 
-            # Dessin
-            # On dessine le bouton JOUER
             mx, my = pygame.mouse.get_pos()
             col_play = (100, 200, 100) if btn_play.collidepoint((mx, my)) else (150, 150, 150)
             pygame.draw.rect(self.screen, col_play, btn_play)
             txt_play = self.font_big.render("JOUER", True, (255, 255, 255))
             self.screen.blit(txt_play, txt_play.get_rect(center=btn_play.center))
 
-            # On dessine les dropdowns (Color d'abord, Opponent ensuite pour que Opponent passe au dessus si ouvert)
             dd_color.draw(self.screen)
             dd_opponent.draw(self.screen)
-
             pygame.display.update()
 
     def update_visual_board_from_string(self, board_str):
@@ -397,29 +408,33 @@ class Game:
             if game_mode != 'pvp' and turn == ai_color and not ai_thinking:
                 ai_thinking = True
                 
-                # --- CAS 1: IA Deep Learning ---
-                if game_mode == 'pve_dl':
+                # --- CAS 1: UNE DES IA DEEP LEARNING (CNN, ResNet, AlphaZero) ---
+                if game_mode in ['pve_cnn', 'pve_resnet', 'pve_alphazero']:
                     fen = self.py_board.fen()
-                    print(f"[IA DL] Réfléchit sur : {fen}")
-                    if AI_AVAILABLE:
+                    print(f"[IA] Réfléchit sur : {fen}")
+                    
+                    if self.active_ai_function:
+                        # Thread séparé pour ne pas geler l'interface pendant le calcul
                         def ai_thread_func():
                             try:
                                 time.sleep(0.5) 
-                                ai_move_san = get_dl_move(fen)
+                                ai_move_san = self.active_ai_function(fen)
+                                
                                 if not ai_move_san: return
                                 move_obj = self.py_board.parse_san(ai_move_san)
                                 uci_move = move_obj.uci()
-                                print(f"[IA DL] Joue : {uci_move}")
+                                print(f"[IA] Joue : {uci_move}")
                                 self.client.send_command(uci_move)
                                 self.move_log.append(uci_move)
                                 self.last_move = self.parse_move_to_indices(uci_move)
                                 self.py_board.push(move_obj)
                             except Exception as e: print(f"[ERREUR IA] {e}")
                         threading.Thread(target=ai_thread_func).start()
+                    else:
+                        print("[ERREUR CRITIQUE] Aucune fonction IA n'a été chargée.")
                 
-                # --- CAS 2: IA C Engine ---
+                # --- CAS 2: IA C Engine (Minimax) ---
                 elif game_mode == 'pve_c':
-                    # L'IA C attend la commande 'go' pour jouer
                     print("[IA C] Commande envoyée: go")
                     self.client.send_command("go")
 

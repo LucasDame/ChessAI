@@ -11,8 +11,8 @@ from model_ResNet import ChessNet
 
 # --- CONFIGURATION AVANCÉE ---
 DATA_DIR = "../../data/processed"
-MODEL_SAVE_PATH = "../models/chess_model_resnet.pth" # Nouveau nom pour ne pas écraser l'ancien
-GRAPH_SAVE_PATH = "../models/training_loss_resnet.png"
+MODEL_SAVE_PATH = "../../models/chess_model_resnet.pth" # Nouveau nom pour ne pas écraser l'ancien
+GRAPH_SAVE_PATH = "../../models/training_loss_resnet.png"
 
 # Hyperparamètres Modèle
 NUM_RES_BLOCKS = 10      # Nombre de blocs (Essaie 10 pour commencer, puis 20)
@@ -104,7 +104,7 @@ def train():
         with torch.no_grad():
             for f_path in val_files:
                 data = torch.load(f_path)
-                dataset = TensorDataset(data['inputs'], data['labels'])
+                dataset = TensorDataset(data['inputs'], data['labels_move'])
                 loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
                 
                 for x, y in loader:

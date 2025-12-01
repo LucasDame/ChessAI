@@ -37,7 +37,7 @@ echo ""
 # :: 2. ENTRAINEMENT CNN (Simple)
 echo -e "${GREEN}[ETAPE 2/5] Entrainement CNN (Utilise seulement les Coups)...${NC}"
 cd DeepLearning/src/CNN || exit 1
-python3 train_CNN.py
+# python3 train_CNN.py
 if [ $? -ne 0 ]; then echo -e "${RED}[ATTENTION] Erreur CNN.${NC}"; fi
 cd ../../..
 echo ""

@@ -8,8 +8,8 @@ from dataset import board_to_tensor, move_to_index
 # --- CONFIGURATION ---
 RAW_DATA_DIR = "../data/raw"
 OUTPUT_DIR = "../data/processed" # Nouveau dossier pour distinguer
-CHUNK_SIZE = 200000 
-MAX_TOTAL_POSITIONS = 5000000 
+CHUNK_SIZE = 500000 
+MAX_TOTAL_POSITIONS = 10000000 
 
 def get_game_result_value(game):
     """Retourne 1.0 si Blanc gagne, -1.0 si Noir gagne, 0.0 si Nul"""
