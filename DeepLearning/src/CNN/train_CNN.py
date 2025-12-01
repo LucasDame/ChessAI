@@ -8,6 +8,16 @@ import random
 import gc # Garbage Collector pour forcer le nettoyage de la RAM
 import matplotlib.pyplot as plt
 from model_CNN import ChessNet
+import time
+
+def format_time(seconds):
+    """Convertit des secondes en format h:m:s"""
+    seconds = int(seconds)
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}h {m}m {s}s"
+    return f"{m}m {s}s"
 
 # --- CONFIGURATION ---
 DATA_DIR = "../../data/processed"
@@ -44,8 +54,12 @@ def train():
 
     print("Début du Streaming...")
 
+    global_start_time = time.time()
+
     for epoch in range(EPOCHS):
         print(f"\n=== EPOCH {epoch+1}/{EPOCHS} ===")
+
+        epoch_start_time = time.time()
         
         # --- PHASE TRAIN (Fichier par Fichier) ---
         model.train()
@@ -136,6 +150,12 @@ def train():
             if patience_counter >= PATIENCE:
                 print("⛔ Early Stopping.")
                 break
+        
+        epoch_duration = time.time() - epoch_start_time
+        print(f"   ⏱️ Durée Epoch : {format_time(epoch_duration)}")
+
+    global_duration = time.time() - global_start_time
+    print(f"\n✅ Entraînement terminé en : {format_time(global_duration)}")
 
     # Graphique
     plt.figure(figsize=(10, 5))
