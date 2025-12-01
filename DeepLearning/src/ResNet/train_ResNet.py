@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from model_ResNet import ChessNet
 
 # --- CONFIGURATION AVANCÉE ---
-DATA_DIR = "../data/processed"
+DATA_DIR = "../../data/processed"
 MODEL_SAVE_PATH = "../models/chess_model_resnet.pth" # Nouveau nom pour ne pas écraser l'ancien
 GRAPH_SAVE_PATH = "../models/training_loss_resnet.png"
 

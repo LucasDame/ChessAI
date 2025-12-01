@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from model_AlphaZero import ChessNet
 
 # --- CONFIGURATION ---
-DATA_DIR = "../data/processed_dual" # Le nouveau dossier
+DATA_DIR = "../../data/processed_dual" # Le nouveau dossier
 MODEL_SAVE_PATH = "../models/chess_model_AlphaZero.pth"
 GRAPH_SAVE_PATH = "../models/training_loss_AlphaZero.png"
 

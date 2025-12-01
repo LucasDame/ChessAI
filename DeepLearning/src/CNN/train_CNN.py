@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from model_CNN import ChessNet
 
 # --- CONFIGURATION ---
-DATA_DIR = "../data/processed"
+DATA_DIR = "../../data/processed"
 MODEL_SAVE_PATH = "../models/chess_model.pth"
 GRAPH_SAVE_PATH = "../models/training_loss.png"
 

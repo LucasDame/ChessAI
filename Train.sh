@@ -22,7 +22,7 @@ echo -e "${GREEN}[ETAPE 1/5] Generation du Dataset Universel (Moves + Results)..
 cd DeepLearning/src || { echo -e "${RED}Dossier introuvable${NC}"; exit 1; }
 
 # On lance le script qui extrait TOUT
-python3 preprocess_universal.py
+# python3 preprocess2.py
 
 # Vérification du code de retour ($?)
 if [ $? -ne 0 ]; then
