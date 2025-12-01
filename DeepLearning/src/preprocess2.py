@@ -50,6 +50,19 @@ def create_datasets():
             result_value = get_game_result_value(game)
             if result_value is None: continue # On ignore les parties non terminées
 
+            if result_value != 0.0:
+                # On regarde le dernier coup du PGN
+                try:
+                    last_move = game.end().move
+                    board_end = game.end().board()
+                    
+                    # Si ce n'est PAS un échec et mat, on ignore la partie !
+                    # (Donc on vire les abandons et les pertes au temps)
+                    if not board_end.is_checkmate():
+                        continue 
+                except:
+                    continue
+
             board = game.board()
             for move in game.mainline_moves():
                 tensor = board_to_tensor(board)
