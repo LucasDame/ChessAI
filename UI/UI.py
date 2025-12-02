@@ -12,16 +12,15 @@ import chess
 #                               CONFIGURATION
 # =============================================================================
 
-# --- CHEMINS (ADAPTEZ SELON VOTRE CONFIGURATION) ---
-LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessC/API_negamax"
+# --- CHEMINS (ADAPTE SELON TA CONFIG) ---
+LINUX_ENGINE_PATH = "/mnt/c/Users/msluc/OneDrive/Projets Info/ChessAI/ChessEngine/API_negamax"
 
-# Configuration des chemins pour l'IA
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DL_SRC_DIR = os.path.join(PROJECT_ROOT, "DeepLearning", "src")
 sys.path.append(DL_SRC_DIR)
 
-# Dimensions & Paramètres
+# Dimensions & Couleurs
 BOARD_WIDTH = 600
 HEIGHT = 600
 PANEL_WIDTH = 250 
@@ -32,7 +31,6 @@ FPS = 30
 HOST = "127.0.0.1"
 PORT = 12345
 
-# Couleurs
 COLOR_LIGHT = (234, 235, 200) 
 COLOR_DARK = (119, 149, 86)   
 COLOR_HIGHLIGHT = (255, 255, 0, 100) 
@@ -47,7 +45,7 @@ COLOR_DROPDOWN_HOVER = (200, 200, 255)
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 # =============================================================================
-#                               WIDGETS (DROPDOWN)
+#                               WIDGETS
 # =============================================================================
 
 class Dropdown:
@@ -103,7 +101,7 @@ class Dropdown:
         return self.selected_index, self.options[self.selected_index]
 
 # =============================================================================
-#                               CLIENT RESEAU (SOCKET)
+#                               CLIENT RESEAU
 # =============================================================================
 
 class ChessAPIClient:
@@ -118,7 +116,11 @@ class ChessAPIClient:
 
     def launch_server(self):
         print(f"[PYTHON] Lancement de : wsl {LINUX_ENGINE_PATH}")
-        cmd = ["wsl", LINUX_ENGINE_PATH]
+        try:
+            cmd = ["wsl", LINUX_ENGINE_PATH]
+        except:
+            cmd = [LINUX_ENGINE_PATH]
+        
         try:
             self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             print("[PYTHON] Processus C démarré.")
@@ -196,7 +198,7 @@ class Game:
         
         self.client = ChessAPIClient()
         
-        # Variable pour stocker la fonction d'IA active
+        # Fonction d'IA active (sera chargée dynamiquement)
         self.active_ai_function = None
 
     def init_standard_visual_board(self):
@@ -220,43 +222,16 @@ class Game:
                 self.images[piece] = pygame.transform.scale(img, (SQ_SIZE, SQ_SIZE))
             except: pass
 
-    def load_ai_model(self, mode):
-        """
-        Charge dynamiquement le module IA correspondant.
-        Cela évite de saturer la RAM en chargeant tous les réseaux.
-        """
-        self.active_ai_function = None
-        
-        if mode == 'pve_cnn':
-            print("[UI] Chargement de l'IA CNN (Simple)...")
-            try:
-                from dl_ai_player import get_dl_move
-                self.active_ai_function = get_dl_move
-            except ImportError as e: print(f"[ERREUR] Import CNN échoué : {e}")
-            
-        elif mode == 'pve_resnet':
-            print("[UI] Chargement de l'IA ResNet (Avancée)...")
-            try:
-                from dl_ai_player_resnet import get_resnet_move
-                self.active_ai_function = get_resnet_move
-            except ImportError as e: print(f"[ERREUR] Import ResNet échoué : {e}")
-            
-        elif mode == 'pve_alphazero':
-            print("[UI] Chargement de l'IA AlphaZero (Experte)...")
-            try:
-                from dl_ai_player_alphazero import get_alphazero_move
-                self.active_ai_function = get_alphazero_move
-            except ImportError as e: print(f"[ERREUR] Import AlphaZero échoué : {e}")
-
     def show_start_screen(self):
         intro = True
         
-        # --- MENU DÉROULANT COMPLET ---
+        # --- MISE A JOUR DES OPTIONS ---
         opponents = [
             "Humain vs Humain", 
             "IA C (Minimax)", 
             "IA Simple (CNN)", 
-            "IA Avancée (ResNet)", 
+            "IA Standard (ResNet)",
+            "IA Avancée (SE-ResNet)", # NOUVEAU CHOIX
             "IA Experte (AlphaZero)"
         ]
         dd_opponent = Dropdown(WIDTH//2 - 150, 200, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, opponents)
@@ -287,18 +262,17 @@ class Game:
                         idx_opp, str_opp = dd_opponent.get_selected()
                         idx_col, str_col = dd_color.get_selected()
                         
-                        # Mapping des choix vers les modes internes
+                        # --- MAPPING MIS A JOUR ---
                         mode = 'pvp'
                         if idx_opp == 1: mode = 'pve_c'
                         elif idx_opp == 2: mode = 'pve_cnn'
                         elif idx_opp == 3: mode = 'pve_resnet'
-                        elif idx_opp == 4: mode = 'pve_alphazero'
+                        elif idx_opp == 4: mode = 'pve_seresnet' # Nouveau cas
+                        elif idx_opp == 5: mode = 'pve_alphazero'
                         
                         color = 'w' if idx_col == 0 else 'b'
                         
-                        # On charge le cerveau IA ici
                         self.load_ai_model(mode)
-                        
                         return mode, color
 
             dd_opponent.update(event_list)
@@ -313,6 +287,41 @@ class Game:
             dd_color.draw(self.screen)
             dd_opponent.draw(self.screen)
             pygame.display.update()
+
+    def load_ai_model(self, mode):
+        """Charge dynamiquement le bon modèle IA"""
+        self.active_ai_function = None
+        
+        if mode == 'pve_cnn':
+            print("[UI] Chargement de l'IA CNN...")
+            try:
+                from dl_ai_player import get_dl_move
+                self.active_ai_function = get_dl_move
+            except ImportError: print("[ERREUR] Impossible de charger IA CNN")
+            
+        elif mode == 'pve_resnet':
+            print("[UI] Chargement de l'IA ResNet (Standard)...")
+            try:
+                # Celui-ci utilise USE_SE=False
+                from dl_ai_player_resnet import get_resnet_move
+                self.active_ai_function = get_resnet_move
+            except ImportError: print("[ERREUR] Impossible de charger IA ResNet")
+
+        elif mode == 'pve_seresnet':
+            print("[UI] Chargement de l'IA SE-ResNet (Avancée)...")
+            try:
+                # Celui-ci utilise USE_SE=True
+                # J'utilise 'as' pour renommer la fonction importée et éviter les confusions
+                from dl_ai_player_seresnet import get_resnet_move as get_seresnet_move
+                self.active_ai_function = get_seresnet_move
+            except ImportError: print("[ERREUR] Impossible de charger IA SE-ResNet")
+            
+        elif mode == 'pve_alphazero':
+            print("[UI] Chargement de l'IA AlphaZero...")
+            try:
+                from dl_ai_player_alphazero import get_alphazero_move
+                self.active_ai_function = get_alphazero_move
+            except ImportError: print("[ERREUR] Impossible de charger IA AlphaZero")
 
     def update_visual_board_from_string(self, board_str):
         char_to_piece = {'P':'wP','N':'wN','B':'wB','R':'wR','Q':'wQ','K':'wK','p':'bP','n':'bN','b':'bB','r':'bR','q':'bQ','k':'bK','-':'--'}
@@ -374,9 +383,6 @@ class Game:
                     draw_r, draw_c = (r, c) if orientation == 'w' else (7-r, 7-c)
                     self.screen.blit(self.images[piece], pygame.Rect(draw_c*SQ_SIZE, draw_r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
-    # =========================================================================
-    #                               BOUCLE DE JEU
-    # =========================================================================
     def run(self):
         game_mode, player_color = self.show_start_screen()
         ai_color = 'b' if player_color == 'w' else 'w'
@@ -385,7 +391,6 @@ class Game:
         ai_thinking = False
         
         while running:
-            # 1. Gestion Réseau
             messages = self.client.get_messages()
             for msg in messages:
                 print(f"[API] {msg}")
@@ -404,48 +409,59 @@ class Game:
                         if turn == player_color: ai_thinking = False
                     elif "game_over" in part: ai_thinking = True 
 
-            # 2. IA LOGIQUE
             if game_mode != 'pvp' and turn == ai_color and not ai_thinking:
                 ai_thinking = True
                 
-                # --- CAS 1: UNE DES IA DEEP LEARNING (CNN, ResNet, AlphaZero) ---
-                if game_mode in ['pve_cnn', 'pve_resnet', 'pve_alphazero']:
+                # --- TOUTES LES IA DEEP LEARNING ---
+                if game_mode in ['pve_cnn', 'pve_resnet', 'pve_seresnet', 'pve_alphazero']:
                     fen = self.py_board.fen()
                     print(f"[IA] Réfléchit sur : {fen}")
                     
                     if self.active_ai_function:
-                        # Thread séparé pour ne pas geler l'interface pendant le calcul
                         def ai_thread_func():
                             try:
-                                time.sleep(0.5) 
-                                ai_move_san = self.active_ai_function(fen)
+                                time.sleep(0.5)
                                 
+                                # --- HYBRIDATION INTELLIGENTE ---
+                                # On compte le nombre de pièces restantes sur le plateau
+                                piece_count = len(self.py_board.piece_map())
+                                
+                                # SEUIL : Si 12 pièces ou moins, on passe en mode "Calcul Brut" (Moteur C)
+                                # Sinon, on reste en mode "Intuition" (Deep Learning)
+                                if piece_count <= 12:
+                                    print(f"[IA HYBRIDE] Finale détectée ({piece_count} pièces). Le Moteur C prend le relais !")
+                                    # On envoie 'go' au moteur C (Minimax)
+                                    self.client.send_command("go")
+                                    return # On arrête la fonction Python ici, le C va répondre via le socket
+                                else:
+                                    # Mode Deep Learning Classique
+                                    ai_move_san = self.active_ai_function(fen)
+                                
+                                # ... (Le reste du code reste identique pour le coup DL) ...
                                 if not ai_move_san: return
                                 move_obj = self.py_board.parse_san(ai_move_san)
                                 uci_move = move_obj.uci()
-                                print(f"[IA] Joue : {uci_move}")
+                                print(f"[IA DL] Joue : {uci_move}")
                                 self.client.send_command(uci_move)
                                 self.move_log.append(uci_move)
                                 self.last_move = self.parse_move_to_indices(uci_move)
                                 self.py_board.push(move_obj)
+                                
                             except Exception as e: print(f"[ERREUR IA] {e}")
                         threading.Thread(target=ai_thread_func).start()
                     else:
-                        print("[ERREUR CRITIQUE] Aucune fonction IA n'a été chargée.")
+                        print("[ERREUR] Fonction IA non chargée.")
                 
-                # --- CAS 2: IA C Engine (Minimax) ---
                 elif game_mode == 'pve_c':
                     print("[IA C] Commande envoyée: go")
                     self.client.send_command("go")
 
-            # 3. Dessin
             self.screen.fill((0,0,0)) 
             self.draw_board(player_color)
             self.draw_pieces(player_color)
             btn_undo = self.draw_sidebar(turn)
             pygame.display.flip()
 
-            # 4. Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.client.send_command("quit"); running = False

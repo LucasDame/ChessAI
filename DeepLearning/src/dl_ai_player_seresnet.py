@@ -14,13 +14,13 @@ except ImportError:
     
 from dataset import board_to_tensor, index_to_move
 
-MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", "chess_model_resnet.pth")
+MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", "chess_model_seresnet.pth")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_model():
     if not os.path.exists(MODEL_PATH): return None
     # Paramètres identiques à l'entraînement !
-    model = ChessNet(num_res_blocks=10, num_channels=128, use_se=False).to(DEVICE)
+    model = ChessNet(num_res_blocks=10, num_channels=128, use_se=True).to(DEVICE)
     try:
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
         model.eval()
