@@ -3,10 +3,7 @@ import random
 import time
 import os
 
-try:
-    from stockfish.stockfish_player import StockfishPlayer
-except ImportError:
-    from stockfish_player import StockfishPlayer
+from stockfish.stockfish_player import StockfishPlayer
 
 from dl_ai_player import get_dl_move
 from dl_ai_player_resnet import get_resnet_move

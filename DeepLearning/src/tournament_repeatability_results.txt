@@ -1,0 +1,88 @@
+=== TEST DE RÉPÉTABILITÉ : 5 RUNS ===
+
+
+########################################
+### DÉBUT DU RUN 1/5 ###
+########################################
+
+--- RÉSULTATS FINAUX DU RUN 1 ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO
+• ANCRE • Stockfish 2000 ELO: 2000 ELO
+• ANCRE • Stockfish 1800 ELO: 1800 ELO
+4. CNN: 1677 ELO
+5. SE-ResNet: 1670 ELO
+6. ResNet: 1662 ELO
+7. AlphaZero: 1639 ELO
+• ANCRE • Stockfish 1600 ELO: 1600 ELO
+• ANCRE • Stockfish 1400 ELO: 1400 ELO
+• ANCRE • Stockfish 1000 ELO: 1000 ELO
+
+
+########################################
+### DÉBUT DU RUN 2/5 ###
+########################################
+
+--- RÉSULTATS FINAUX DU RUN 2 ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO
+• ANCRE • Stockfish 2000 ELO: 2000 ELO
+• ANCRE • Stockfish 1800 ELO: 1800 ELO
+4. ResNet: 1687 ELO
+5. SE-ResNet: 1679 ELO
+6. CNN: 1658 ELO
+7. AlphaZero: 1643 ELO
+• ANCRE • Stockfish 1600 ELO: 1600 ELO
+• ANCRE • Stockfish 1400 ELO: 1400 ELO
+• ANCRE • Stockfish 1000 ELO: 1000 ELO
+
+
+########################################
+### DÉBUT DU RUN 3/5 ###
+########################################
+
+--- RÉSULTATS FINAUX DU RUN 3 ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO
+• ANCRE • Stockfish 2000 ELO: 2000 ELO
+• ANCRE • Stockfish 1800 ELO: 1800 ELO
+4. SE-ResNet: 1689 ELO
+5. CNN: 1665 ELO
+6. ResNet: 1665 ELO
+7. AlphaZero: 1636 ELO
+• ANCRE • Stockfish 1600 ELO: 1600 ELO
+• ANCRE • Stockfish 1400 ELO: 1400 ELO
+• ANCRE • Stockfish 1000 ELO: 1000 ELO
+
+
+########################################
+### DÉBUT DU RUN 4/5 ###
+########################################
+
+--- RÉSULTATS FINAUX DU RUN 4 ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO
+• ANCRE • Stockfish 2000 ELO: 2000 ELO
+• ANCRE • Stockfish 1800 ELO: 1800 ELO
+4. SE-ResNet: 1696 ELO
+5. CNN: 1665 ELO
+6. ResNet: 1663 ELO
+7. AlphaZero: 1653 ELO
+• ANCRE • Stockfish 1600 ELO: 1600 ELO
+• ANCRE • Stockfish 1400 ELO: 1400 ELO
+• ANCRE • Stockfish 1000 ELO: 1000 ELO
+
+
+########################################
+### DÉBUT DU RUN 5/5 ###
+########################################
+
+--- RÉSULTATS FINAUX DU RUN 5 ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO
+• ANCRE • Stockfish 2000 ELO: 2000 ELO
+• ANCRE • Stockfish 1800 ELO: 1800 ELO
+4. SE-ResNet: 1708 ELO
+5. CNN: 1667 ELO
+6. ResNet: 1657 ELO
+7. AlphaZero: 1632 ELO
+• ANCRE • Stockfish 1600 ELO: 1600 ELO
+• ANCRE • Stockfish 1400 ELO: 1400 ELO
+• ANCRE • Stockfish 1000 ELO: 1000 ELO
+
+=== TOUS LES TESTS TERMINÉS ===

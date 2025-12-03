@@ -1,0 +1,79 @@
+--- DÉBUT DU TOURNOI MÉLANGÉ (1080 parties) ---
+
+--- CLASSEMENT PROVISOIRE (Après 100 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 21, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 19, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 16, K=Fixe)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 20, K=Fixe)
+5. SE-ResNet: 1594 ELO (Parties: 18, K=40)
+6. CNN: 1563 ELO (Parties: 22, K=40)
+7. ResNet: 1514 ELO (Parties: 18, K=40)
+8. AlphaZero: 1508 ELO (Parties: 24, K=40)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 23, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 19, K=Fixe)
+------------------------------
+
+--- CLASSEMENT PROVISOIRE (Après 200 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 42, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 41, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 35, K=Fixe)
+4. CNN: 1637 ELO (Parties: 45, K=24)
+5. SE-ResNet: 1617 ELO (Parties: 31, K=24)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 46, K=Fixe)
+7. ResNet: 1570 ELO (Parties: 36, K=24)
+8. AlphaZero: 1523 ELO (Parties: 43, K=24)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 44, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 37, K=Fixe)
+------------------------------
+
+--- CLASSEMENT PROVISOIRE (Après 300 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 58, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 63, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 58, K=Fixe)
+4. SE-ResNet: 1677 ELO (Parties: 58, K=24)
+5. CNN: 1645 ELO (Parties: 66, K=24)
+6. ResNet: 1614 ELO (Parties: 58, K=24)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 62, K=Fixe)
+8. AlphaZero: 1536 ELO (Parties: 61, K=24)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 62, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 54, K=Fixe)
+------------------------------
+
+--- CLASSEMENT PROVISOIRE (Après 400 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 71, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 81, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 76, K=Fixe)
+4. ResNet: 1632 ELO (Parties: 82, K=24)
+5. CNN: 1602 ELO (Parties: 86, K=24)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 86, K=Fixe)
+7. AlphaZero: 1595 ELO (Parties: 81, K=24)
+8. SE-ResNet: 1580 ELO (Parties: 77, K=24)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 82, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 78, K=Fixe)
+------------------------------
+
+--- CLASSEMENT PROVISOIRE (Après 500 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 92, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 100, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 91, K=Fixe)
+4. AlphaZero: 1648 ELO (Parties: 105, K=10)
+5. CNN: 1629 ELO (Parties: 102, K=10)
+6. SE-ResNet: 1627 ELO (Parties: 101, K=10)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 103, K=Fixe)
+8. ResNet: 1583 ELO (Parties: 104, K=10)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 103, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 99, K=Fixe)
+------------------------------
+
+--- CLASSEMENT PROVISOIRE (Après 600 parties) ---
+• ANCRE • Stockfish 2200 ELO: 2200 ELO (Parties: 109, K=Fixe)
+• ANCRE • Stockfish 2000 ELO: 2000 ELO (Parties: 115, K=Fixe)
+• ANCRE • Stockfish 1800 ELO: 1800 ELO (Parties: 116, K=Fixe)
+4. AlphaZero: 1640 ELO (Parties: 132, K=10)
+5. CNN: 1639 ELO (Parties: 120, K=10)
+6. SE-ResNet: 1636 ELO (Parties: 115, K=10)
+7. ResNet: 1607 ELO (Parties: 130, K=10)
+• ANCRE • Stockfish 1600 ELO: 1600 ELO (Parties: 121, K=Fixe)
+• ANCRE • Stockfish 1400 ELO: 1400 ELO (Parties: 122, K=Fixe)
+• ANCRE • Stockfish 1000 ELO: 1000 ELO (Parties: 120, K=Fixe)
+------------------------------
