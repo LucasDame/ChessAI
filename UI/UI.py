@@ -232,7 +232,8 @@ class Game:
             "IA Simple (CNN)", 
             "IA Standard (ResNet)",
             "IA Avancée (SE-ResNet)", # NOUVEAU CHOIX
-            "IA Experte (AlphaZero)"
+            "IA Experte (AlphaZero)",
+            "IA Génétique (TinyNet)"
         ]
         dd_opponent = Dropdown(WIDTH//2 - 150, 200, 300, 40, self.font, COLOR_DROPDOWN_BG, COLOR_DROPDOWN_HOVER, opponents)
         
@@ -269,6 +270,7 @@ class Game:
                         elif idx_opp == 3: mode = 'pve_resnet'
                         elif idx_opp == 4: mode = 'pve_seresnet' # Nouveau cas
                         elif idx_opp == 5: mode = 'pve_alphazero'
+                        elif idx_opp == 6: mode = 'pve_genetic'
                         
                         color = 'w' if idx_col == 0 else 'b'
                         
@@ -322,6 +324,13 @@ class Game:
                 from dl_ai_player_alphazero import get_alphazero_move
                 self.active_ai_function = get_alphazero_move
             except ImportError: print("[ERREUR] Impossible de charger IA AlphaZero")
+
+        elif mode == 'pve_genetic':
+            print("[UI] Chargement de l'IA Génétique...")
+            try:
+                from dl_ai_player_genetic import get_genetic_move
+                self.active_ai_function = get_genetic_move
+            except ImportError as e: print(f"[ERREUR] Impossible de charger IA Génétique: {e}")
 
     def update_visual_board_from_string(self, board_str):
         char_to_piece = {'P':'wP','N':'wN','B':'wB','R':'wR','Q':'wQ','K':'wK','p':'bP','n':'bN','b':'bB','r':'bR','q':'bQ','k':'bK','-':'--'}
@@ -472,7 +481,7 @@ class Game:
                 ai_thinking = True
                 
                 # --- CAS A : IA Deep Learning ---
-                if game_mode in ['pve_cnn', 'pve_resnet', 'pve_seresnet', 'pve_alphazero']:
+                if game_mode in ['pve_cnn', 'pve_resnet', 'pve_seresnet', 'pve_alphazero', 'pve_genetic']:
                     fen = self.py_board.fen()
                     if self.active_ai_function:
                         def ai_thread_func():
