@@ -383,6 +383,40 @@ class Game:
                     draw_r, draw_c = (r, c) if orientation == 'w' else (7-r, 7-c)
                     self.screen.blit(self.images[piece], pygame.Rect(draw_c*SQ_SIZE, draw_r*SQ_SIZE, SQ_SIZE, SQ_SIZE))
 
+    def sync_board_with_engine(self, engine_board_str):
+        """
+        Déduit le coup joué par le moteur en comparant la string reçue 
+        avec tous les coups légaux possibles sur le plateau interne.
+        """
+        # 1. On nettoie la string reçue
+        engine_board_str = engine_board_str.strip()
+        
+        # 2. On cherche quel coup légal transforme notre plateau actuel en ce plateau cible
+        found_move = None
+        
+        for move in self.py_board.legal_moves:
+            self.py_board.push(move) # On simule le coup
+            
+            # On génère la string correspondante à ce coup simulé
+            # (On doit reproduire la logique de formatage de ton moteur C: ligne par ligne, haut vers bas)
+            generated_str = []
+            for row in range(8): # 0 (A8..H8) à 7 (A1..H1)
+                for col in range(8):
+                    square = chess.square(col, 7 - row) # Conversion coordonnées visuelles -> python-chess
+                    piece = self.py_board.piece_at(square)
+                    generated_str.append(piece.symbol() if piece else "-")
+            
+            generated_check = "".join(generated_str)
+            
+            # Si ça matche, c'est que c'est le bon coup !
+            if generated_check == engine_board_str:
+                found_move = move
+                break # On garde le coup poussé (on ne pop pas)
+            
+            self.py_board.pop() # Ce n'était pas le bon coup, on annule
+            
+        return found_move
+
     def run(self):
         game_mode, player_color = self.show_start_screen()
         ai_color = 'b' if player_color == 'w' else 'w'
@@ -391,71 +425,87 @@ class Game:
         ai_thinking = False
         
         while running:
+            # 1. Gestion Réseau
             messages = self.client.get_messages()
             for msg in messages:
                 print(f"[API] {msg}")
-                if "illegal" in msg:
-                    if self.move_log: 
-                        self.move_log.pop(); 
-                        try: self.py_board.pop() 
-                        except: pass
-                    self.last_move = self.parse_move_to_indices(self.move_log[-1]) if self.move_log else []
-                    ai_thinking = False
+                
                 parts = msg.split(' ')
                 for part in parts:
                     if part.startswith("board:"):
-                        self.update_visual_board_from_string(part.split(":")[1])
+                        board_data = part.split(":")[1]
+                        
+                        # --- CORRECTION ICI ---
+                        # 1. Mettre à jour le visuel (comme avant)
+                        self.update_visual_board_from_string(board_data)
+                        
+                        # 2. Mettre à jour la logique interne (Sync)
+                        # On ne le fait que si c'est au tour de l'IA (pour éviter les conflits si update humain)
+                        if turn == ai_color:
+                            played_move = self.sync_board_with_engine(board_data)
+                            
+                            if played_move:
+                                uci = played_move.uci()
+                                print(f"[SYNC] Moteur C a joué : {uci}")
+                                self.move_log.append(uci)
+                                self.last_move = self.parse_move_to_indices(uci)
+                                # self.py_board est déjà mis à jour par sync_board_with_engine (il ne pop pas si trouvé)
+                            else:
+                                print("[ERREUR SYNC] Impossible de déduire le coup du moteur !")
+                        
+                        # 3. Changement de tour
                         turn = 'b' if turn == 'w' else 'w'
                         if turn == player_color: ai_thinking = False
+                        
                     elif "game_over" in part: ai_thinking = True 
+                    elif "illegal" in part:
+                        # Gestion des coups illégaux (rare avec l'IA, possible pour l'humain)
+                        if self.move_log: 
+                            self.move_log.pop(); 
+                            try: self.py_board.pop() 
+                            except: pass
+                        self.last_move = self.parse_move_to_indices(self.move_log[-1]) if self.move_log else []
+                        ai_thinking = False
 
+            # 2. IA LOGIQUE
             if game_mode != 'pvp' and turn == ai_color and not ai_thinking:
                 ai_thinking = True
                 
-                # --- TOUTES LES IA DEEP LEARNING ---
+                # --- CAS A : IA Deep Learning ---
                 if game_mode in ['pve_cnn', 'pve_resnet', 'pve_seresnet', 'pve_alphazero']:
                     fen = self.py_board.fen()
-                    print(f"[IA] Réfléchit sur : {fen}")
-                    
                     if self.active_ai_function:
                         def ai_thread_func():
                             try:
                                 time.sleep(0.5)
-                                
-                                # --- HYBRIDATION INTELLIGENTE ---
-                                # On compte le nombre de pièces restantes sur le plateau
-                                piece_count = len(self.py_board.piece_map())
-                                
-                                # SEUIL : Si 12 pièces ou moins, on passe en mode "Calcul Brut" (Moteur C)
-                                # Sinon, on reste en mode "Intuition" (Deep Learning)
-                                if piece_count <= 12:
-                                    print(f"[IA HYBRIDE] Finale détectée ({piece_count} pièces). Le Moteur C prend le relais !")
-                                    # On envoie 'go' au moteur C (Minimax)
+                                # Hybridation (Minimax en finale < 12 pièces)
+                                if len(self.py_board.piece_map()) <= 12:
+                                    print("[IA] Passage relais au Moteur C (Finale)")
                                     self.client.send_command("go")
-                                    return # On arrête la fonction Python ici, le C va répondre via le socket
-                                else:
-                                    # Mode Deep Learning Classique
-                                    ai_move_san = self.active_ai_function(fen)
-                                
-                                # ... (Le reste du code reste identique pour le coup DL) ...
+                                    return 
+
+                                ai_move_san = self.active_ai_function(fen)
                                 if not ai_move_san: return
+                                
                                 move_obj = self.py_board.parse_san(ai_move_san)
                                 uci_move = move_obj.uci()
                                 print(f"[IA DL] Joue : {uci_move}")
-                                self.client.send_command(uci_move)
+                                
+                                self.client.send_command(uci_move) # Envoi pour update C
                                 self.move_log.append(uci_move)
                                 self.last_move = self.parse_move_to_indices(uci_move)
-                                self.py_board.push(move_obj)
-                                
+                                self.py_board.push(move_obj) # Update Python
                             except Exception as e: print(f"[ERREUR IA] {e}")
                         threading.Thread(target=ai_thread_func).start()
-                    else:
-                        print("[ERREUR] Fonction IA non chargée.")
-                
+                    else: print("[ERR] Fonction IA manquante")
+
+                # --- CAS B : Moteur C (Minimax Pur) ---
                 elif game_mode == 'pve_c':
+                    # On envoie juste "go", on attend le retour "board:" pour la synchro
                     print("[IA C] Commande envoyée: go")
                     self.client.send_command("go")
 
+            # 3. Dessin & Events (Inchangé)
             self.screen.fill((0,0,0)) 
             self.draw_board(player_color)
             self.draw_pieces(player_color)
@@ -497,8 +547,8 @@ class Game:
                         try:
                             move_obj = chess.Move.from_uci(move_str)
                             if move_obj in self.py_board.legal_moves:
-                                self.py_board.push(move_obj)
-                                self.client.send_command(move_str)
+                                self.py_board.push(move_obj) # Update Python
+                                self.client.send_command(move_str) # Update C
                                 self.move_log.append(move_str)
                                 self.last_move = [start, end]
                         except: self.client.send_command(move_str)

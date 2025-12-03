@@ -41,11 +41,11 @@ def get_resnet_move(fen_string: str) -> str:
     best_move_obj = index_to_move(best_index)
 
     if best_move_obj in board.legal_moves:
-        return board.san(best_move_obj)
+        return board.uci(best_move_obj)
     
     top_indices = torch.topk(output, 20).indices.squeeze().tolist()
     for idx in top_indices:
         move = index_to_move(idx)
-        if move in board.legal_moves: return board.san(move)
+        if move in board.legal_moves: return board.uci(move)
             
-    return board.san(list(board.legal_moves)[0])
+    return board.uci(list(board.legal_moves)[0])
