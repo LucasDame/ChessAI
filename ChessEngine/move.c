@@ -27,13 +27,13 @@ void init_leapers_attacks() {
         Bitboard knight_bit = (1ULL << sq);
         Bitboard k_moves = 0;
         
-        if ((sq + 17) < 64) k_moves |= (knight_bit & ~MASK_GH_FILE) << 17;
-        if ((sq + 15) < 64) k_moves |= (knight_bit & ~MASK_AB_FILE) << 15;
+        if ((sq + 17) < 64) k_moves |= (knight_bit & ~MASK_H_FILE) << 17;
+        if ((sq + 15) < 64) k_moves |= (knight_bit & ~MASK_A_FILE) << 15;
         if ((sq + 10) < 64) k_moves |= (knight_bit & ~MASK_GH_FILE) << 10;
         if ((sq + 6)  < 64) k_moves |= (knight_bit & ~MASK_AB_FILE) << 6;
         
-        if ((sq - 17) >= 0) k_moves |= (knight_bit & ~MASK_AB_FILE) >> 17;
-        if ((sq - 15) >= 0) k_moves |= (knight_bit & ~MASK_GH_FILE) >> 15;
+        if ((sq - 17) >= 0) k_moves |= (knight_bit & ~MASK_A_FILE) >> 17;
+        if ((sq - 15) >= 0) k_moves |= (knight_bit & ~MASK_H_FILE) >> 15;
         if ((sq - 10) >= 0) k_moves |= (knight_bit & ~MASK_AB_FILE) >> 10;
         if ((sq - 6)  >= 0) k_moves |= (knight_bit & ~MASK_GH_FILE) >> 6;
         

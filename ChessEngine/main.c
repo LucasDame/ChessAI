@@ -97,7 +97,7 @@ int main() {
             save_board(&history[game_ply]);
 
             // 2. Recherche du meilleur coup (depth 4)
-            MOVE best = search_best_move(5);
+            MOVE best = search_best_move(7);
             
             if (best != 0) {
                 // Conversion du coup en texte

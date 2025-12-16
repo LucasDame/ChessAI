@@ -315,7 +315,7 @@ class Game:
                 # Celui-ci utilise USE_SE=True
                 # J'utilise 'as' pour renommer la fonction importée et éviter les confusions
                 from dl_ai_player_seresnet import get_resnet_move as get_seresnet_move
-                self.active_ai_function = get_seresnet_move
+                self.active_ai_function = get_seresnet_move 
             except ImportError: print("[ERREUR] Impossible de charger IA SE-ResNet")
             
         elif mode == 'pve_alphazero':
@@ -488,7 +488,7 @@ class Game:
                             try:
                                 time.sleep(0.5)
                                 # Hybridation (Minimax en finale < 12 pièces)
-                                if len(self.py_board.piece_map()) <= 12:
+                                if len(self.py_board.piece_map()) <= 20:
                                     print("[IA] Passage relais au Moteur C (Finale)")
                                     self.client.send_command("go")
                                     return 

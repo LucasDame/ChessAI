@@ -14,9 +14,9 @@ from dataset import board_to_tensor
 # Nom du fichier à charger (Mets ici le numéro de ta meilleure génération)
 # Exemple : "genetic_best_gen_50.pth"
 MODEL_FILENAME = "genetic_best_gen_50.pth" 
-MODEL_PATH = os.path.join(CURRENT_DIR, "..", "models", MODEL_FILENAME)
+MODEL_PATH = os.path.join(CURRENT_DIR,"..", "..", "models", "evolution", MODEL_FILENAME)
 DEVICE = torch.device("cpu") # Le TinyNet est si petit que le CPU est souvent plus rapide (pas d'overhead transfert GPU)
-DEPTH_INFERENCE = 3 # On peut monter à 3 ou 4 car le réseau est léger
+DEPTH_INFERENCE = 5 # On peut monter à 3 ou 4 car le réseau est léger
 
 # --- 1. L'ARCHITECTURE (Doit être IDENTIQUE à genetic_trainer.py) ---
 class TinyChessNet(nn.Module):

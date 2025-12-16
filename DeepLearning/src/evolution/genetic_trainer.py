@@ -152,7 +152,7 @@ def run_evolution():
     print(f"--- BATTLE ROYALE : {POPULATION_SIZE} BOTS ---")
     population = [TinyChessNet() for _ in range(POPULATION_SIZE)]
     
-    save_dir = os.path.join(parent_dir,"..", "..", "models", "evolution")
+    save_dir = os.path.join(parent_dir, "..", "..", "models", "evolution")
     os.makedirs(save_dir, exist_ok=True)
 
     total_start_time = time.time()
@@ -187,11 +187,16 @@ def run_evolution():
 
         gen_end_time = time.time()
         duration = gen_end_time - gen_start_time
-        print(f"\n  >>> Durée Gen {gen+1}: {duration:.2f}s")
+        print(f"\n  >>> Durée Gen {gen+1}: {(duration//60):.2f}min {(duration%60):.2f}s")
 
         ranked_population = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)
         best_score = ranked_population[0][0]
         print(f"  >>> Champion Gen {gen+1} : {best_score} points")
+        print("      Scores des 5 Meilleurs : ", end="")
+        print([item[0] for item in ranked_population[:5]])
+        print(f"      Scores des Survivants : {[item[0] for item in ranked_population[:SURVIVORS]]}")
+        print("      Score médian : {ranked_population[POPULATION_SIZE//2][0]}")
+        print("      Score le plus bas : {ranked_population[-1][0]}")
         
         survivors = [item[1] for item in ranked_population[:SURVIVORS]]
         
